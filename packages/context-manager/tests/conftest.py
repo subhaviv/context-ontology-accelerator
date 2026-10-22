@@ -12,8 +12,22 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
-def mock_aws_env():
-    """Ensure tests don't hit real AWS services."""
+def mock_aws_env(request):
+    """Ensure UNIT tests don't hit real AWS services.
+
+    Autouse, so every unit test runs with dummy credentials and a fixed region —
+    a test that forgets to mock a boto client fails with a signing error rather
+    than silently reaching a real account. An ``integ``-marked test is the
+    deliberate exception: it is written to exercise LIVE AWS (real DynamoDB, a
+    real AgentCore runtime), so overwriting its resolved credentials with
+    ``"testing"`` would make it fail with ``UnrecognizedClientException`` no
+    matter what. For those tests the fixture yields WITHOUT patching, leaving the
+    caller's real ``AWS_PROFILE`` / resolved credentials in place. Unit isolation
+    is unchanged — only the explicit integ opt-in sees real creds.
+    """
+    if request.node.get_closest_marker("integ"):
+        yield
+        return
     env_vars = {
         "AWS_DEFAULT_REGION": "us-east-1",
         "AWS_ACCESS_KEY_ID": "testing",

@@ -47,3 +47,24 @@ class MCPConfig(BaseSettings):
 
     # Auth
     auth_enabled: bool = True
+
+    # ── System-caller mode (agent-MCP wrapper) ────────────────────────
+    # When cm_sigv4 is true, execution tools SIGN the Context Manager invoke
+    # with AWS SigV4 (the wrapper's own runtime role) INSTEAD of forwarding the
+    # caller's bearer token. This is the agent-MCP wrapper path: the caller
+    # authenticates to THIS server with a Loom M2M token (validated by the
+    # AgentCore authorizer's allowedClients), and the server re-authenticates to
+    # the IAM-authorized serve-agent runtime as a system via SigV4. The caller's
+    # token is NOT forwarded (the serve-agent runtime has no JWT authorizer).
+    #
+    # Nothing sets SCL_CM_SIGV4 on the human MCP stack, so it defaults false and
+    # the human path keeps forwarding the user JWT unchanged.
+    cm_sigv4: bool = False
+
+    # The system identity this wrapper asserts to serve-agent on the SigV4 path.
+    # Derived from the VERIFIED M2M token's client (set by the agent-mcp stack
+    # as SCL_SYSTEM_PROFILE_*), NOT from the request body — so groups come from
+    # a cryptographically-validated identity, not a caller-supplied value.
+    # Only consulted when cm_sigv4 is true.
+    system_profile_user_id: str = "beacon-agent"
+    system_profile_groups: str = ""  # comma-separated; e.g. "beacon-agents"

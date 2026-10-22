@@ -1,0 +1,210 @@
+{
+    "Items": [
+        {
+            "isBuiltIn": {
+                "BOOL": true
+            },
+            "cedarPolicy": {
+                "S": "// Default policy — applied to every authenticated principal on every\n// authorization decision (the authorizer always loads ROLE#default in\n// addition to the principal's resolved roles). It therefore also carries the\n// archived-namespace mutation guard below, which must participate in every\n// evaluation regardless of the principal's roles.\n\n// All authenticated users can list namespaces (filtering in API logic).\npermit (\n  principal,\n  action == SCL::Action::\"list\",\n  resource is SCL::Namespace\n);\n\n// Non-ACTIVE-namespace mutation guard.\n//\n// A namespace that is not ACTIVE — ARCHIVED (frozen, data retained for\n// audit), DELETING (async deletion pipeline running), or DELETE_FAILED\n// (deletion attempt failed, awaiting retry) — must never accept a MUTATING\n// action against it or its child resources (sources, metrics, ontologies,\n// grants, roles). Because this is a `forbid`, it overrides every `permit` —\n// including platform-admin and namespace-owner — so \"no mutations unless\n// ACTIVE\" is a hard invariant, not a role-overridable default. Blocking\n// DELETING/DELETE_FAILED (not just ARCHIVED) prevents a create/update racing\n// against the deletion pipeline's cleanup steps, or against a retry of a\n// failed deletion, which could otherwise resurrect a child resource the\n// pipeline just tore down (or is about to).\n//\n// It lives in default.cedar (rather than a standalone seed file) so it is\n// always loaded: the authorizer always includes ROLE#default in the evaluated\n// policy set, so the guard is guaranteed to participate without any extra\n// seeding or per-request policy loading.\n//\n// Intentionally NOT blocked in any non-ACTIVE status:\n//   - Reads: viewNamespace, list, query, readMetric, searchDocuments\n//   - setNamespaceStatus → reactivate (ARCHIVED -> ACTIVE)\n//   - deleteNamespace     → tear down / retry (ARCHIVED or DELETE_FAILED -> DELETING)\n//\n// The authorizer only sets context.namespaceStatus for mutating routes that\n// carry a namespaceId, so the `context has namespaceStatus` guard leaves\n// platform-scoped and create routes (no namespace yet) unaffected.\nforbid (\n  principal,\n  action in [\n    SCL::Action::\"manageSource\",\n    SCL::Action::\"manageMetric\",\n    SCL::Action::\"manageOntology\",\n    SCL::Action::\"manageNamespace\",\n    SCL::Action::\"grantPermissions\",\n    SCL::Action::\"manageRoles\"\n  ],\n  resource\n)\nwhen {\n  context has namespaceStatus && context.namespaceStatus != \"ACTIVE\"\n};\n"
+            },
+            "updatedAt": {
+                "S": "2026-10-21T17:08:53.789Z"
+            },
+            "createdAt": {
+                "S": "2026-10-21T17:08:53.789Z"
+            },
+            "scope": {
+                "S": "GLOBAL"
+            },
+            "PK": {
+                "S": "GLOBAL"
+            },
+            "description": {
+                "S": "Default policy applied to all authenticated users"
+            },
+            "name": {
+                "S": "Default"
+            },
+            "SK": {
+                "S": "ROLE#default"
+            }
+        },
+        {
+            "cedarPolicy": {
+                "S": "// Global Admin: full access to all actions on all resources\npermit (\n  principal,\n  action,\n  resource\n)\nwhen { principal.globalRoles.contains(\"platform-admin\") };\n"
+            },
+            "isBuiltIn": {
+                "BOOL": true
+            },
+            "updatedAt": {
+                "S": "2026-10-21T17:08:53.780Z"
+            },
+            "createdAt": {
+                "S": "2026-10-21T17:08:53.780Z"
+            },
+            "scope": {
+                "S": "GLOBAL"
+            },
+            "description": {
+                "S": "Full access to all resources across all namespaces"
+            },
+            "PK": {
+                "S": "GLOBAL"
+            },
+            "name": {
+                "S": "Platform Admin"
+            },
+            "SK": {
+                "S": "ROLE#platform-admin"
+            }
+        },
+        {
+            "cedarPolicy": {
+                "S": "// Global Viewer: read-only access across all namespaces\npermit (\n  principal,\n  action == SCL::Action::\"viewNamespace\",\n  resource\n)\nwhen { principal.globalRoles.contains(\"platform-viewer\") };\n\npermit (\n  principal,\n  action == SCL::Action::\"list\",\n  resource\n)\nwhen { principal.globalRoles.contains(\"platform-viewer\") };\n\npermit (\n  principal,\n  action == SCL::Action::\"readMetric\",\n  resource\n)\nwhen { principal.globalRoles.contains(\"platform-viewer\") };\n\npermit (\n  principal,\n  action == SCL::Action::\"searchDocuments\",\n  resource\n)\nwhen { principal.globalRoles.contains(\"platform-viewer\") };\n\npermit (\n  principal,\n  action == SCL::Action::\"query\",\n  resource\n)\nwhen { principal.globalRoles.contains(\"platform-viewer\") };\n\npermit (\n  principal,\n  action == SCL::Action::\"translateQuery\",\n  resource\n)\nwhen { principal.globalRoles.contains(\"platform-viewer\") };\n\npermit (\n  principal,\n  action == SCL::Action::\"traverseGraph\",\n  resource\n)\nwhen { principal.globalRoles.contains(\"platform-viewer\") };\n"
+            },
+            "isBuiltIn": {
+                "BOOL": true
+            },
+            "updatedAt": {
+                "S": "2026-10-21T17:08:53.786Z"
+            },
+            "createdAt": {
+                "S": "2026-10-21T17:08:53.786Z"
+            },
+            "scope": {
+                "S": "GLOBAL"
+            },
+            "PK": {
+                "S": "GLOBAL"
+            },
+            "description": {
+                "S": "Read-only access across all namespaces"
+            },
+            "name": {
+                "S": "Platform Viewer"
+            },
+            "SK": {
+                "S": "ROLE#platform-viewer"
+            }
+        },
+        {
+            "isBuiltIn": {
+                "BOOL": true
+            },
+            "updatedAt": {
+                "S": "2026-10-21T17:08:53.788Z"
+            },
+            "cedarPolicy": {
+                "S": "// Namespace DataAnalyst: read/query access within their namespace.\n// Role name \"data-analyst\" (kebab-case) matches the identifier stored in DynamoDB.\n//\n// Grants:\n//   - query, readMetric, searchDocuments (scoped via resource.namespace)\n//   - viewNamespace, list (scoped via resource.id)\n//\n// Does NOT grant any write/manage actions.\npermit (\n  principal,\n  action == SCL::Action::\"query\",\n  resource\n)\nwhen {\n  principal.resourceRoles.contains({\n    \"role\": \"data-analyst\",\n    \"resourceUID\": resource.namespace\n  })\n};\n\npermit (\n  principal,\n  action == SCL::Action::\"readMetric\",\n  resource\n)\nwhen {\n  principal.resourceRoles.contains({\n    \"role\": \"data-analyst\",\n    \"resourceUID\": resource.namespace\n  })\n};\n\npermit (\n  principal,\n  action == SCL::Action::\"searchDocuments\",\n  resource\n)\nwhen {\n  principal.resourceRoles.contains({\n    \"role\": \"data-analyst\",\n    \"resourceUID\": resource.namespace\n  })\n};\n\npermit (\n  principal,\n  action == SCL::Action::\"translateQuery\",\n  resource\n)\nwhen {\n  principal.resourceRoles.contains({\n    \"role\": \"data-analyst\",\n    \"resourceUID\": resource.namespace\n  })\n};\n\npermit (\n  principal,\n  action == SCL::Action::\"traverseGraph\",\n  resource\n)\nwhen {\n  principal.resourceRoles.contains({\n    \"role\": \"data-analyst\",\n    \"resourceUID\": resource.namespace\n  })\n};\n\npermit (\n  principal,\n  action == SCL::Action::\"viewNamespace\",\n  resource\n)\nwhen {\n  principal.resourceRoles.contains({\n    \"role\": \"data-analyst\",\n    \"resourceUID\": resource.id\n  })\n};\n\npermit (\n  principal,\n  action == SCL::Action::\"list\",\n  resource\n)\nwhen {\n  principal.resourceRoles.contains({\n    \"role\": \"data-analyst\",\n    \"resourceUID\": resource.id\n  })\n};\n"
+            },
+            "createdAt": {
+                "S": "2026-10-21T17:08:53.788Z"
+            },
+            "scope": {
+                "S": "NAMESPACE"
+            },
+            "PK": {
+                "S": "NAMESPACE_TEMPLATE"
+            },
+            "description": {
+                "S": "Query and read access within a namespace"
+            },
+            "name": {
+                "S": "Data Analyst"
+            },
+            "SK": {
+                "S": "ROLE#data-analyst"
+            }
+        },
+        {
+            "isBuiltIn": {
+                "BOOL": true
+            },
+            "updatedAt": {
+                "S": "2026-10-21T17:08:53.787Z"
+            },
+            "cedarPolicy": {
+                "S": "// Namespace DataSteward: manage data assets within their namespace.\n// Role name \"data-steward\" (kebab-case) matches the identifier stored in DynamoDB.\n//\n// Grants:\n//   - manageSource, manageOntology, manageMetric (scoped via resource.namespace)\n//   - query, readMetric, searchDocuments (scoped via resource.namespace)\n//   - viewNamespace, list (scoped via resource.id)\n//\n// Does NOT grant: manageNamespace, deleteNamespace, grantPermissions, manageRoles.\npermit (\n  principal,\n  action == SCL::Action::\"manageSource\",\n  resource\n)\nwhen {\n  principal.resourceRoles.contains({\n    \"role\": \"data-steward\",\n    \"resourceUID\": resource.namespace\n  })\n};\n\npermit (\n  principal,\n  action == SCL::Action::\"manageOntology\",\n  resource\n)\nwhen {\n  principal.resourceRoles.contains({\n    \"role\": \"data-steward\",\n    \"resourceUID\": resource.namespace\n  })\n};\n\npermit (\n  principal,\n  action == SCL::Action::\"manageMetric\",\n  resource\n)\nwhen {\n  principal.resourceRoles.contains({\n    \"role\": \"data-steward\",\n    \"resourceUID\": resource.namespace\n  })\n};\n\npermit (\n  principal,\n  action == SCL::Action::\"viewNamespace\",\n  resource\n)\nwhen {\n  principal.resourceRoles.contains({\n    \"role\": \"data-steward\",\n    \"resourceUID\": resource.id\n  })\n};\n\npermit (\n  principal,\n  action == SCL::Action::\"list\",\n  resource\n)\nwhen {\n  principal.resourceRoles.contains({\n    \"role\": \"data-steward\",\n    \"resourceUID\": resource.id\n  })\n};\n\npermit (\n  principal,\n  action == SCL::Action::\"query\",\n  resource\n)\nwhen {\n  principal.resourceRoles.contains({\n    \"role\": \"data-steward\",\n    \"resourceUID\": resource.namespace\n  })\n};\n\npermit (\n  principal,\n  action == SCL::Action::\"readMetric\",\n  resource\n)\nwhen {\n  principal.resourceRoles.contains({\n    \"role\": \"data-steward\",\n    \"resourceUID\": resource.namespace\n  })\n};\n\npermit (\n  principal,\n  action == SCL::Action::\"searchDocuments\",\n  resource\n)\nwhen {\n  principal.resourceRoles.contains({\n    \"role\": \"data-steward\",\n    \"resourceUID\": resource.namespace\n  })\n};\n\npermit (\n  principal,\n  action == SCL::Action::\"translateQuery\",\n  resource\n)\nwhen {\n  principal.resourceRoles.contains({\n    \"role\": \"data-steward\",\n    \"resourceUID\": resource.namespace\n  })\n};\n\npermit (\n  principal,\n  action == SCL::Action::\"traverseGraph\",\n  resource\n)\nwhen {\n  principal.resourceRoles.contains({\n    \"role\": \"data-steward\",\n    \"resourceUID\": resource.namespace\n  })\n};\n"
+            },
+            "createdAt": {
+                "S": "2026-10-21T17:08:53.787Z"
+            },
+            "scope": {
+                "S": "NAMESPACE"
+            },
+            "description": {
+                "S": "Manage data sources, ontologies, metrics, and documents within a namespace"
+            },
+            "PK": {
+                "S": "NAMESPACE_TEMPLATE"
+            },
+            "name": {
+                "S": "Data Steward"
+            },
+            "SK": {
+                "S": "ROLE#data-steward"
+            }
+        },
+        {
+            "cedarPolicy": {
+                "S": "// Namespace Maintainer: full access within their namespace (same as owner)\npermit (\n  principal,\n  action,\n  resource\n)\nwhen {\n  principal.resourceRoles.contains({\n    \"role\": \"namespace-maintainer\",\n    \"resourceUID\": resource.id\n  })\n};\n"
+            },
+            "updatedAt": {
+                "S": "2026-10-21T17:08:53.789Z"
+            },
+            "isBuiltIn": {
+                "BOOL": true
+            },
+            "createdAt": {
+                "S": "2026-10-21T17:08:53.789Z"
+            },
+            "scope": {
+                "S": "NAMESPACE"
+            },
+            "description": {
+                "S": "Full control within a namespace"
+            },
+            "PK": {
+                "S": "NAMESPACE_TEMPLATE"
+            },
+            "name": {
+                "S": "Namespace Maintainer"
+            },
+            "SK": {
+                "S": "ROLE#namespace-maintainer"
+            }
+        },
+        {
+            "cedarPolicy": {
+                "S": "// Namespace Owner: full access within their namespace.\n// Matches when the principal holds the \"namespace-owner\" resource role\n// for the target resource's ID. Grants all actions (manage, delete, grant, etc.).\n// Role name uses kebab-case to align with the role identifiers stored in DynamoDB.\npermit (\n  principal,\n  action,\n  resource\n)\nwhen {\n  principal.resourceRoles.contains({\n    \"role\": \"namespace-owner\",\n    \"resourceUID\": resource.id\n  })\n};\n"
+            },
+            "isBuiltIn": {
+                "BOOL": true
+            },
+            "updatedAt": {
+                "S": "2026-10-21T17:08:53.787Z"
+            },
+            "createdAt": {
+                "S": "2026-10-21T17:08:53.787Z"
+            },
+            "scope": {
+                "S": "NAMESPACE"
+            },
+            "description": {
+                "S": "Full control within a namespace"
+            },
+            "PK": {
+                "S": "NAMESPACE_TEMPLATE"
+            },
+            "name": {
+                "S": "Namespace Owner"
+            },
+            "SK": {
+                "S": "ROLE#namespace-owner"
+            }
+        }
+    ],
+    "Count": 7,
+    "ScannedCount": 7,
+    "ConsumedCapacity": null
+}

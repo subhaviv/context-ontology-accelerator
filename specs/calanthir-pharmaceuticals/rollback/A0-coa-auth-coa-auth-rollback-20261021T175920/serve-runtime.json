@@ -1,0 +1,91 @@
+{
+    "agentRuntimeArn": "arn:aws:bedrock-agentcore:us-east-1:195698601974:runtime/coa_dev_context_manager-8Q2n5Z9YSY",
+    "agentRuntimeName": "coa_dev_context_manager",
+    "agentRuntimeId": "coa_dev_context_manager-8Q2n5Z9YSY",
+    "agentRuntimeVersion": "1",
+    "createdAt": "2026-10-21T17:28:13.390100+00:00",
+    "lastUpdatedAt": "2026-10-21T17:32:38.729202+00:00",
+    "roleArn": "arn:aws:iam::195698601974:role/coa-dev-serve-AgentCoreRuntimeExecutionRoleB22B0632-ug5NrMf5e1T9",
+    "networkConfiguration": {
+        "networkMode": "VPC",
+        "networkModeConfig": {
+            "securityGroups": [
+                "sg-0b72e1ee6e8cb565a"
+            ],
+            "subnets": [
+                "subnet-0be307c5c1f916c5f",
+                "subnet-040f34b5883b69265"
+            ],
+            "requireServiceS3Endpoint": false
+        }
+    },
+    "status": "READY",
+    "lifecycleConfiguration": {
+        "idleRuntimeSessionTimeout": 900,
+        "maxLifetime": 28800
+    },
+    "description": "Context Manager orchestration service",
+    "workloadIdentityDetails": {
+        "workloadIdentityArn": "arn:aws:bedrock-agentcore:us-east-1:195698601974:workload-identity-directory/default/workload-identity/coa_dev_context_manager-8Q2n5Z9YSY"
+    },
+    "agentRuntimeArtifact": {
+        "containerConfiguration": {
+            "containerUri": "195698601974.dkr.ecr.us-east-1.amazonaws.com/cdk-hnb659fds-container-assets-195698601974-us-east-1:f9570ca89693f3e0dc580f95e695651c92b09d79fada347b3d31cc51d17f504d"
+        }
+    },
+    "protocolConfiguration": {
+        "serverProtocol": "HTTP"
+    },
+    "environmentVariables": {
+        "ALLOW_NO_GUARDRAIL": "true",
+        "ATHENA_OUTPUT_S3": "s3://coa-dev-athena-results-195698601974/",
+        "ATHENA_WORKGROUP_PREFIX": "coa-dev-",
+        "AWS_REGION": "us-east-1",
+        "BEDROCK_EMBED_MODEL_ID": "us.cohere.embed-v4:0",
+        "BEDROCK_MODEL_ID": "us.anthropic.claude-sonnet-5",
+        "DATA_SOURCES_TABLE": "coa-dev-sources",
+        "DEEP_REASONING_PER_TOOL_TIMEOUT_S": "45",
+        "DEEP_REASONING_SYNTHESIS_RESERVE_S": "25",
+        "DEEP_REASONING_TIME_BUDGET_S": "110",
+        "ENVIRONMENT": "dev",
+        "EVENT_SOURCE_PREFIX": "coa",
+        "GRAPH_BASE_URI": "http://coa.amazon.com",
+        "GRAPH_URI_TEMPLATE": "https://ontology-workbench.local/{namespace}",
+        "GROUP_CLAIM_NAME": "cognito:groups",
+        "LEXICAL_RETRIEVER_STRATEGY": "topic_beam",
+        "LOG_LEVEL": "INFO",
+        "MEMORY_ID": "coa_dev_context_manager_memory-uAcHpyHJiP",
+        "NAMESPACES_TABLE": "coa-dev-namespaces",
+        "NEPTUNE_ENDPOINT": "coa-dev-neptune.cluster-cyx2g4iqewj0.us-east-1.neptune.amazonaws.com",
+        "OPENSEARCH_ENDPOINT": "https://s2hmk2qxb2o8fufcx05m.aoss.us-east-1.on.aws",
+        "OPENSEARCH_PROXY_LAMBDA_ARN": "arn:aws:lambda:us-east-1:195698601974:function:coa-dev-aoss-search-proxy",
+        "OSS_ONTOLOGY_INDEX": "coa-dev-vector-store",
+        "REDSHIFT_SERVE_DATABASE": "dev",
+        "RESOLVE_TIMEOUT_S": "170",
+        "ROLES_TABLE_NAME": "coa-dev-roles",
+        "RRM_TABLE_NAME": "coa-dev-resource-role-mappings",
+        "SCL_CEDAR_FAIL_OPEN_NO_ROLES": "false",
+        "SESSION_METADATA_TABLE": "coa-dev-session-metadata",
+        "SSM_PREFIX": "/coa",
+        "TIER1_METRIC_TIMEOUT_S": "35",
+        "TIER3_STRATEGY": "lexical-baseline",
+        "VKG_ENDPOINT": "http://vkg.coa-dev-services.local:8080"
+    },
+    "authorizerConfiguration": {
+        "customJWTAuthorizer": {
+            "discoveryUrl": "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_hSuaktFXR/.well-known/openid-configuration",
+            "allowedAudience": [
+                "7ru7vrf5a9m1dvpgq2eocg9esp",
+                "3p4ganoan7328djo9e9727939r"
+            ]
+        }
+    },
+    "requestHeaderConfiguration": {
+        "requestHeaderAllowlist": [
+            "Authorization"
+        ]
+    },
+    "metadataConfiguration": {
+        "requireMMDSV2": true
+    }
+}

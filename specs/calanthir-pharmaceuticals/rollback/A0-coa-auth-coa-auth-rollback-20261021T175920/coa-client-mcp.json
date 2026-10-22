@@ -1,0 +1,44 @@
+{
+    "UserPoolClient": {
+        "UserPoolId": "us-east-1_hSuaktFXR",
+        "ClientName": "coa-dev-mcp-client",
+        "ClientId": "3p4ganoan7328djo9e9727939r",
+        "LastModifiedDate": "2026-10-21T13:03:44.539000-04:00",
+        "CreationDate": "2026-10-21T13:03:44.539000-04:00",
+        "RefreshTokenValidity": 43200,
+        "AccessTokenValidity": 1440,
+        "IdTokenValidity": 1440,
+        "TokenValidityUnits": {
+            "AccessToken": "minutes",
+            "IdToken": "minutes",
+            "RefreshToken": "minutes"
+        },
+        "ExplicitAuthFlows": [
+            "ALLOW_REFRESH_TOKEN_AUTH",
+            "ALLOW_USER_PASSWORD_AUTH",
+            "ALLOW_USER_SRP_AUTH"
+        ],
+        "SupportedIdentityProviders": [
+            "COGNITO"
+        ],
+        "CallbackURLs": [
+            "http://localhost:9876/oauth/callback"
+        ],
+        "LogoutURLs": [
+            "http://localhost:9876/"
+        ],
+        "AllowedOAuthFlows": [
+            "code"
+        ],
+        "AllowedOAuthScopes": [
+            "email",
+            "openid",
+            "profile"
+        ],
+        "AllowedOAuthFlowsUserPoolClient": true,
+        "PreventUserExistenceErrors": "ENABLED",
+        "EnableTokenRevocation": true,
+        "EnablePropagateAdditionalUserContextData": false,
+        "AuthSessionValidity": 3
+    }
+}

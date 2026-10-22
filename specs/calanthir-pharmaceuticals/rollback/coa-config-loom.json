@@ -1,0 +1,9 @@
+{
+  "idpType": "OIDC",
+  "oidcSettings": {
+    "issuerUrl": "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_NoErXe1QA",
+    "clientId": "6vk9o6868ki77bop8re580aglp",
+    "groupClaim": "cognito:groups"
+  },
+  "initialAdminEmail": "subhaviv@amazon.com"
+}

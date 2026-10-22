@@ -1,0 +1,23 @@
+{
+  "_comment": "Shape-1 Beacon system-caller policy. Lives in the Beacon account (agentops-consumer, 172873868821). This is the REACHABILITY gate: the ONLY thing that lets Beacon reach COA serve. Groups are NOT here — IAM has no groups concept that reaches serve; Beacon asserts profile.groups in the invoke payload and serve trusts it BECAUSE only this role can make the call. So this policy is the real security boundary: scope it to exactly the one serve runtime endpoint, nothing wider.",
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "InvokeCoaServeAgentRuntime",
+      "Effect": "Allow",
+      "Action": "bedrock-agentcore:InvokeAgentRuntime",
+      "Resource": "arn:aws:bedrock-agentcore:us-east-1:195698601974:runtime/<COA_SERVE_AGENT_RUNTIME_ID>/runtime-endpoint/DEFAULT",
+      "_resource_note": "Scope to the ENDPOINT ARN (.../runtime-endpoint/DEFAULT), not the bare runtime ARN — the invoke targets the endpoint (cross-account AgentCore lesson). <RUNTIME_ID> is filled once the IAM-authorized serve runtime is deployed."
+    },
+    {
+      "Sid": "DenyForUserInvoke",
+      "Effect": "Deny",
+      "Action": [
+        "bedrock-agentcore:InvokeAgentRuntimeForUser",
+        "bedrock-agentcore:GetWorkloadAccessTokenForUserId"
+      ],
+      "Resource": "*",
+      "_deny_note": "AWS best practice: a workload that never carries a user JWT should explicitly deny the ForUser path, so all identity goes through the one system profile this role asserts — it cannot be coaxed into impersonating an end user."
+    }
+  ]
+}

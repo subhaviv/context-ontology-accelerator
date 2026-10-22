@@ -1,0 +1,1 @@
+{"region":"us-east-1","stage":"dev","authority":"https://cognito-idp.us-east-1.amazonaws.com/us-east-1_hSuaktFXR","clientId":"7ru7vrf5a9m1dvpgq2eocg9esp","apiEndpoint":"https://tsd3qaxkmc.execute-api.us-east-1.amazonaws.com/prod/","serveRuntimeArn":"arn:aws:bedrock-agentcore:us-east-1:195698601974:runtime/coa_dev_context_manager-8Q2n5Z9YSY","version":"0.3.6"}

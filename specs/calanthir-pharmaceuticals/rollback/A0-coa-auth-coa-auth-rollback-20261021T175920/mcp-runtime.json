@@ -1,0 +1,73 @@
+{
+    "agentRuntimeArn": "arn:aws:bedrock-agentcore:us-east-1:195698601974:runtime/coa_dev_mcp_server-MkoY1fCoME",
+    "agentRuntimeName": "coa_dev_mcp_server",
+    "agentRuntimeId": "coa_dev_mcp_server-MkoY1fCoME",
+    "agentRuntimeVersion": "1",
+    "createdAt": "2026-10-21T17:33:33.206923+00:00",
+    "lastUpdatedAt": "2026-10-21T17:37:48.837857+00:00",
+    "roleArn": "arn:aws:iam::195698601974:role/coa-dev-mcp-McpRuntimeExecutionRole8FFA527F-7ul4QdSptcXn",
+    "networkConfiguration": {
+        "networkMode": "VPC",
+        "networkModeConfig": {
+            "securityGroups": [
+                "sg-02dbced6dbefaf3ac"
+            ],
+            "subnets": [
+                "subnet-0be307c5c1f916c5f",
+                "subnet-040f34b5883b69265"
+            ],
+            "requireServiceS3Endpoint": false
+        }
+    },
+    "status": "READY",
+    "lifecycleConfiguration": {
+        "idleRuntimeSessionTimeout": 900,
+        "maxLifetime": 28800
+    },
+    "description": "MCP Server - protocol adapter with PKCE auth, forwards execution to Context Manager",
+    "workloadIdentityDetails": {
+        "workloadIdentityArn": "arn:aws:bedrock-agentcore:us-east-1:195698601974:workload-identity-directory/default/workload-identity/coa_dev_mcp_server-MkoY1fCoME"
+    },
+    "agentRuntimeArtifact": {
+        "containerConfiguration": {
+            "containerUri": "195698601974.dkr.ecr.us-east-1.amazonaws.com/cdk-hnb659fds-container-assets-195698601974-us-east-1:f9570ca89693f3e0dc580f95e695651c92b09d79fada347b3d31cc51d17f504d"
+        }
+    },
+    "protocolConfiguration": {
+        "serverProtocol": "MCP"
+    },
+    "environmentVariables": {
+        "AWS_REGION": "us-east-1",
+        "CM_RUNTIME_ARN": "arn:aws:bedrock-agentcore:us-east-1:195698601974:runtime/coa_dev_context_manager-8Q2n5Z9YSY",
+        "ENVIRONMENT": "dev",
+        "EVENT_SOURCE_PREFIX": "coa",
+        "GRAPH_BASE_URI": "http://coa.amazon.com",
+        "GROUP_CLAIM_NAME": "cognito:groups",
+        "JWT_CLIENT_ID": "3p4ganoan7328djo9e9727939r",
+        "JWT_ISSUER_URL": "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_hSuaktFXR",
+        "LOG_LEVEL": "INFO",
+        "METRIC_SERVICE_LAMBDA_ARN": "arn:aws:lambda:us-east-1:195698601974:function:coa-dev-metric-api",
+        "ONTOLOGY_PROXY_LAMBDA_ARN": "arn:aws:lambda:us-east-1:195698601974:function:coa-dev-ontology-api-proxy",
+        "ROLES_TABLE_NAME": "coa-dev-roles",
+        "RRM_TABLE_NAME": "coa-dev-resource-role-mappings",
+        "SCL_MCP_MODE": "true",
+        "SSM_PREFIX": "/coa"
+    },
+    "authorizerConfiguration": {
+        "customJWTAuthorizer": {
+            "discoveryUrl": "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_hSuaktFXR/.well-known/openid-configuration",
+            "allowedAudience": [
+                "7ru7vrf5a9m1dvpgq2eocg9esp",
+                "3p4ganoan7328djo9e9727939r"
+            ]
+        }
+    },
+    "requestHeaderConfiguration": {
+        "requestHeaderAllowlist": [
+            "Authorization"
+        ]
+    },
+    "metadataConfiguration": {
+        "requireMMDSV2": true
+    }
+}

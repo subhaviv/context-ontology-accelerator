@@ -158,16 +158,23 @@ export class WebStack extends SCLStack {
           `${ssmPrefix}/userpool-id`,
         )
       : "";
-    // Hosted-UI domain prefix, for the CSP. Same Cognito-only gate as above:
-    // the OIDC branch of the auth stack provisions no hosted UI, so there is no
-    // parameter to read and nothing to allowlist (a direct-OIDC deployment's
-    // token endpoint is on its own authority, already covered).
+    // Hosted-UI domain prefix, for the CSP connect-src/frame-src allowlist.
+    // Cognito/SAML mode reads it from SSM (COA's own hosted UI). In OIDC mode
+    // COA provisions no hosted UI, BUT the external IdP's token endpoint lives
+    // on ITS hosted-UI host (`<prefix>.auth.<region>.amazoncognito.com`), which
+    // is a DIFFERENT host from the issuer/JWKS (`cognito-idp...`) — so the PKCE
+    // code→token POST is NOT "already covered" by the authority origin (that
+    // comment was wrong; sign-in failed with a CSP block on /oauth2/token).
+    // Supply the external IdP's hosted-UI prefix via the `oidc_hosted_ui_prefix`
+    // context key so it is allowlisted. (Calanthir/Loom: loom-agentops-<acct>.)
     const cognitoDomainPrefix = props.isCognitoMode
       ? ssm.StringParameter.valueForStringParameter(
           this,
           `${ssmPrefix}/cognito-domain-prefix`,
         )
-      : undefined;
+      : ((this.node.tryGetContext("oidc_hosted_ui_prefix") as
+          | string
+          | undefined) ?? undefined);
 
     const uiDomainName = props.customDomain?.uiDomainName;
     const uiCertificateArn = props.customDomain?.uiCertificateArn;

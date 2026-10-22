@@ -1,6 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+export { AgentMcpStack } from "./agent-mcp-stack";
 export { ApiStack } from "./api-stack";
 export { ControlPlaneStack } from "./control-plane-stack";
 export { DataLayerStack } from "./data-layer-stack";
@@ -10,5 +11,6 @@ export { MetricServiceStack } from "./metric-service-stack";
 export { NamespaceStack } from "./namespace-stack";
 export { OntologyStack } from "./ontology-stack";
 export { ServeStack } from "./serve-stack";
+export { ServeAgentStack } from "./serve-agent-stack";
 export { SourcesStack } from "./sources-stack";
 export { VkgStack } from "./vkg-stack";

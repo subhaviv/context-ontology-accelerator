@@ -1,0 +1,25 @@
+{
+    "id": "tsd3qaxkmc",
+    "name": "coa-dev-api",
+    "description": "Context Ontology Accelerator REST API — namespace, ingestion, and query management.",
+    "createdDate": "2026-10-21T13:35:14-04:00",
+    "version": "2025-04-18",
+    "apiKeySource": "HEADER",
+    "endpointConfiguration": {
+        "types": [
+            "EDGE"
+        ],
+        "ipAddressType": "ipv4"
+    },
+    "tags": {
+        "Environment": "dev",
+        "Project": "semantic-context",
+        "aws:cloudformation:logical-id": "RestApi0C43BF4B",
+        "aws:cloudformation:stack-id": "arn:aws:cloudformation:us-east-1:195698601974:stack/coa-dev-api/937370c0-cd75-11f1-ac50-12ffcad53fc9",
+        "aws:cloudformation:stack-name": "coa-dev-api"
+    },
+    "disableExecuteApiEndpoint": false,
+    "rootResourceId": "cir7p2m7x2",
+    "securityPolicy": "TLS_1_0",
+    "apiStatus": "AVAILABLE"
+}

@@ -1,0 +1,20 @@
+{
+  "_comment": "RRM grant row: the DATA-SCOPE gate. This is what turns Beacon's asserted profile.groups=['beacon-agents'] into actual permissions. Namespace-SCOPED (resourceId = the pharmacy namespace UUID), NOT GLOBAL — Beacon should reach only the one namespace, unlike the Group::Admin GLOBAL platform-admin row. Mirrors the live Group::Admin attribute shape exactly (PK/SK + principalKey/resourceRoleKey GSI keys + namespaceKey). Role 'data-analyst' = read/query, not steward/owner. Written to coa-dev-resource-role-mappings via PutItem (reversible). The example columnDenylist shows how to strip patient-identifying columns from Beacon's reads — edit/remove per the real pharmacy schema once seeded.",
+  "_namespace_id": "36521996-76e9-433f-96cb-d2ec2db4e568",
+  "item": {
+    "PK":              { "S": "Namespace::36521996-76e9-433f-96cb-d2ec2db4e568#Group::beacon-agents" },
+    "SK":              { "S": "ROLE#data-analyst" },
+    "principalKey":    { "S": "Group::beacon-agents" },
+    "resourceRoleKey": { "S": "Namespace::36521996-76e9-433f-96cb-d2ec2db4e568#ROLE#data-analyst" },
+    "principalRoleKey":{ "S": "Group::beacon-agents#ROLE#data-analyst" },
+    "namespaceKey":    { "S": "NS#36521996-76e9-433f-96cb-d2ec2db4e568" },
+    "principalType":   { "S": "Group" },
+    "principalId":     { "S": "beacon-agents" },
+    "resourceType":    { "S": "Namespace" },
+    "resourceId":      { "S": "36521996-76e9-433f-96cb-d2ec2db4e568" },
+    "role":            { "S": "data-analyst" },
+    "grantedBy":       { "S": "system-beacon-read-wiring" },
+    "grantedAt":       { "S": "2026-10-22T02:12:00.000Z" }
+  },
+  "_optional_data_restrictions_note": "To constrain Beacon's reads, add attributes to the item above, e.g. columnDenylist = { 'M': { '<table>': { 'L': [ {'S':'patient_name'}, {'S':'mrn'} ] } } } and/or allowedMetrics = { 'L': [ {'S':'<metric-id>'} ] }. Omitted here because the pharmacy namespace has no sources/schema seeded yet (sourceCount=0), so there are no real table/column names to deny."
+}

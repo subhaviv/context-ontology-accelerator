@@ -1,0 +1,46 @@
+{
+    "Users": [
+        {
+            "Username": "943884f8-c061-706b-fe02-972236fd84d1",
+            "Attributes": [
+                {
+                    "Name": "email",
+                    "Value": "nobody@amazon.com"
+                },
+                {
+                    "Name": "email_verified",
+                    "Value": "true"
+                },
+                {
+                    "Name": "sub",
+                    "Value": "943884f8-c061-706b-fe02-972236fd84d1"
+                }
+            ],
+            "UserCreateDate": "2026-10-21T13:05:01.558000-04:00",
+            "UserLastModifiedDate": "2026-10-21T13:05:01.558000-04:00",
+            "Enabled": true,
+            "UserStatus": "FORCE_CHANGE_PASSWORD"
+        },
+        {
+            "Username": "c4681438-10b1-70ae-ff7e-e301031bc89a",
+            "Attributes": [
+                {
+                    "Name": "email",
+                    "Value": "subhaviv@amazon.com"
+                },
+                {
+                    "Name": "email_verified",
+                    "Value": "true"
+                },
+                {
+                    "Name": "sub",
+                    "Value": "c4681438-10b1-70ae-ff7e-e301031bc89a"
+                }
+            ],
+            "UserCreateDate": "2026-10-21T15:27:01.186000-04:00",
+            "UserLastModifiedDate": "2026-10-21T15:27:14.830000-04:00",
+            "Enabled": true,
+            "UserStatus": "CONFIRMED"
+        }
+    ]
+}

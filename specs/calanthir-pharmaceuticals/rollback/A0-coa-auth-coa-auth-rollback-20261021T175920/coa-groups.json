@@ -1,0 +1,11 @@
+{
+    "Groups": [
+        {
+            "GroupName": "Admin",
+            "UserPoolId": "us-east-1_hSuaktFXR",
+            "Description": "Initial admin group",
+            "LastModifiedDate": "2026-10-21T13:05:02.041000-04:00",
+            "CreationDate": "2026-10-21T13:05:02.041000-04:00"
+        }
+    ]
+}

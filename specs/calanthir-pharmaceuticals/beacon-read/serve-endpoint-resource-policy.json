@@ -1,0 +1,16 @@
+{
+  "_comment": "Resource-based policy attached to the IAM-authorized COA serve runtime ENDPOINT (in agentops-publisher, 195698601974). This is the SECURITY-CRITICAL boundary for Shape 1: because serve's no-JWT branch TRUSTS profile.groups as asserted by the caller, the IAM-authorized runtime must be reachable by Beacon's role ALONE. If any second, less-trusted principal could invoke it, that principal could assert groups:['Admin'] and escalate. put-resource-policy requires the policy Resource to EQUAL --resource-arn exactly (no wildcards).",
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowBeaconRoleOnly",
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::172873868821:role/<BEACON_AGENT_ROLE_NAME>"
+      },
+      "Action": "bedrock-agentcore:InvokeAgentRuntime",
+      "Resource": "arn:aws:bedrock-agentcore:us-east-1:195698601974:runtime/<COA_SERVE_AGENT_RUNTIME_ID>/runtime-endpoint/DEFAULT",
+      "_note": "Single-principal allow. The <BEACON_AGENT_ROLE_NAME> is the role the beacon-iam-role-policy.json is attached to in the consumer account. No other principal is named, so no other workload can reach this IAM-authorized runtime."
+    }
+  ]
+}

@@ -1,0 +1,481 @@
+{
+    "Parameters": [
+        {
+            "Name": "/coa/authentication-group-token-name",
+            "Type": "String",
+            "Value": "cognito:groups",
+            "Version": 1,
+            "LastModifiedDate": "2026-10-21T13:03:41.409000-04:00",
+            "ARN": "arn:aws:ssm:us-east-1:195698601974:parameter/coa/authentication-group-token-name",
+            "DataType": "text"
+        },
+        {
+            "Name": "/coa/bedrock/guardrail-id",
+            "Type": "String",
+            "Value": "9fzx5i9h0ae6",
+            "Version": 1,
+            "LastModifiedDate": "2026-10-21T13:03:46.227000-04:00",
+            "ARN": "arn:aws:ssm:us-east-1:195698601974:parameter/coa/bedrock/guardrail-id",
+            "DataType": "text"
+        },
+        {
+            "Name": "/coa/bedrock/guardrail-version",
+            "Type": "String",
+            "Value": "DRAFT",
+            "Version": 1,
+            "LastModifiedDate": "2026-10-21T13:03:46.226000-04:00",
+            "ARN": "arn:aws:ssm:us-east-1:195698601974:parameter/coa/bedrock/guardrail-version",
+            "DataType": "text"
+        },
+        {
+            "Name": "/coa/bedrock/retrieval-guardrail-id",
+            "Type": "String",
+            "Value": "jeesdch6hr1y",
+            "Version": 1,
+            "LastModifiedDate": "2026-10-21T13:03:44.534000-04:00",
+            "ARN": "arn:aws:ssm:us-east-1:195698601974:parameter/coa/bedrock/retrieval-guardrail-id",
+            "DataType": "text"
+        },
+        {
+            "Name": "/coa/bedrock/retrieval-guardrail-version",
+            "Type": "String",
+            "Value": "DRAFT",
+            "Version": 1,
+            "LastModifiedDate": "2026-10-21T13:03:44.521000-04:00",
+            "ARN": "arn:aws:ssm:us-east-1:195698601974:parameter/coa/bedrock/retrieval-guardrail-version",
+            "DataType": "text"
+        },
+        {
+            "Name": "/coa/cognito-domain-prefix",
+            "Type": "String",
+            "Value": "coa-dev-auth-195698601974",
+            "Version": 1,
+            "LastModifiedDate": "2026-10-21T13:03:42.406000-04:00",
+            "ARN": "arn:aws:ssm:us-east-1:195698601974:parameter/coa/cognito-domain-prefix",
+            "DataType": "text"
+        },
+        {
+            "Name": "/coa/issuer",
+            "Type": "String",
+            "Value": "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_hSuaktFXR",
+            "Version": 1,
+            "LastModifiedDate": "2026-10-21T13:03:44.326000-04:00",
+            "ARN": "arn:aws:ssm:us-east-1:195698601974:parameter/coa/issuer",
+            "DataType": "text"
+        },
+        {
+            "Name": "/coa/mcp-client-id",
+            "Type": "String",
+            "Value": "3p4ganoan7328djo9e9727939r",
+            "Version": 1,
+            "LastModifiedDate": "2026-10-21T13:03:46.491000-04:00",
+            "ARN": "arn:aws:ssm:us-east-1:195698601974:parameter/coa/mcp-client-id",
+            "DataType": "text"
+        },
+        {
+            "Name": "/coa/userpool-client-id",
+            "Type": "String",
+            "Value": "7ru7vrf5a9m1dvpgq2eocg9esp",
+            "Version": 1,
+            "LastModifiedDate": "2026-10-21T13:03:46.632000-04:00",
+            "ARN": "arn:aws:ssm:us-east-1:195698601974:parameter/coa/userpool-client-id",
+            "DataType": "text"
+        },
+        {
+            "Name": "/coa/userpool-id",
+            "Type": "String",
+            "Value": "us-east-1_hSuaktFXR",
+            "Version": 1,
+            "LastModifiedDate": "2026-10-21T13:03:44.492000-04:00",
+            "ARN": "arn:aws:ssm:us-east-1:195698601974:parameter/coa/userpool-id",
+            "DataType": "text"
+        },
+        {
+            "Name": "/coa/data-layer/api-fn-arn",
+            "Type": "String",
+            "Value": "arn:aws:lambda:us-east-1:195698601974:function:coa-dev-data-layer-api",
+            "Version": 1,
+            "LastModifiedDate": "2026-10-21T13:33:44.336000-04:00",
+            "ARN": "arn:aws:ssm:us-east-1:195698601974:parameter/coa/data-layer/api-fn-arn",
+            "DataType": "text"
+        },
+        {
+            "Name": "/coa/dev/network/private-subnet-ids",
+            "Type": "String",
+            "Value": "subnet-0be307c5c1f916c5f,subnet-040f34b5883b69265",
+            "Version": 1,
+            "LastModifiedDate": "2026-10-21T13:04:29.759000-04:00",
+            "ARN": "arn:aws:ssm:us-east-1:195698601974:parameter/coa/dev/network/private-subnet-ids",
+            "DataType": "text"
+        },
+        {
+            "Name": "/coa/dev/network/vpc-id",
+            "Type": "String",
+            "Value": "vpc-0300f6320d6beb833",
+            "Version": 1,
+            "LastModifiedDate": "2026-10-21T13:04:25.058000-04:00",
+            "ARN": "arn:aws:ssm:us-east-1:195698601974:parameter/coa/dev/network/vpc-id",
+            "DataType": "text"
+        },
+        {
+            "Name": "/coa/dev/serve/runtime-role-arn",
+            "Type": "String",
+            "Value": "arn:aws:iam::195698601974:role/coa-dev-serve-AgentCoreRuntimeExecutionRoleB22B0632-ug5NrMf5e1T9",
+            "Version": 1,
+            "LastModifiedDate": "2026-10-21T13:25:21.610000-04:00",
+            "ARN": "arn:aws:ssm:us-east-1:195698601974:parameter/coa/dev/serve/runtime-role-arn",
+            "DataType": "text"
+        },
+        {
+            "Name": "/coa/dev/sources/db-connector-role-arn",
+            "Type": "String",
+            "Value": "arn:aws:iam::195698601974:role/coa-dev-sources-DbConnectorFnServiceRole66F59DFC-BMBjuJT5ixry",
+            "Version": 1,
+            "LastModifiedDate": "2026-10-21T13:25:46.458000-04:00",
+            "ARN": "arn:aws:ssm:us-east-1:195698601974:parameter/coa/dev/sources/db-connector-role-arn",
+            "DataType": "text"
+        },
+        {
+            "Name": "/coa/edge/cloudfront-web-acl-arn",
+            "Type": "String",
+            "Value": "arn:aws:wafv2:us-east-1:195698601974:global/webacl/coa-dev-cloudfront-waf/ae20dedf-612d-463f-b937-7a8ba6fb9aeb",
+            "Version": 1,
+            "LastModifiedDate": "2026-10-21T13:15:12.333000-04:00",
+            "ARN": "arn:aws:ssm:us-east-1:195698601974:parameter/coa/edge/cloudfront-web-acl-arn",
+            "DataType": "text"
+        },
+        {
+            "Name": "/coa/mcp/runtime-arn",
+            "Type": "String",
+            "Value": "arn:aws:bedrock-agentcore:us-east-1:195698601974:runtime/coa_dev_mcp_server-MkoY1fCoME",
+            "Version": 1,
+            "LastModifiedDate": "2026-10-21T13:33:36.513000-04:00",
+            "ARN": "arn:aws:ssm:us-east-1:195698601974:parameter/coa/mcp/runtime-arn",
+            "DataType": "text"
+        },
+        {
+            "Name": "/coa/mcp/runtime-role-arn",
+            "Type": "String",
+            "Value": "arn:aws:iam::195698601974:role/coa-dev-mcp-McpRuntimeExecutionRole8FFA527F-7ul4QdSptcXn",
+            "Version": 1,
+            "LastModifiedDate": "2026-10-21T13:33:15.727000-04:00",
+            "ARN": "arn:aws:ssm:us-east-1:195698601974:parameter/coa/mcp/runtime-role-arn",
+            "DataType": "text"
+        },
+        {
+            "Name": "/coa/metric/api-fn-arn",
+            "Type": "String",
+            "Value": "arn:aws:lambda:us-east-1:195698601974:function:coa-dev-metric-api",
+            "Version": 1,
+            "LastModifiedDate": "2026-10-21T13:29:59.430000-04:00",
+            "ARN": "arn:aws:ssm:us-east-1:195698601974:parameter/coa/metric/api-fn-arn",
+            "DataType": "text"
+        },
+        {
+            "Name": "/coa/namespace/roles-api-fn-arn",
+            "Type": "String",
+            "Value": "arn:aws:lambda:us-east-1:195698601974:function:coa-dev-roles-api",
+            "Version": 1,
+            "LastModifiedDate": "2026-10-21T13:21:37.930000-04:00",
+            "ARN": "arn:aws:ssm:us-east-1:195698601974:parameter/coa/namespace/roles-api-fn-arn",
+            "DataType": "text"
+        },
+        {
+            "Name": "/coa/namespace/api-fn-arn",
+            "Type": "String",
+            "Value": "arn:aws:lambda:us-east-1:195698601974:function:coa-dev-namespace-api",
+            "Version": 1,
+            "LastModifiedDate": "2026-10-21T13:22:47.077000-04:00",
+            "ARN": "arn:aws:ssm:us-east-1:195698601974:parameter/coa/namespace/api-fn-arn",
+            "DataType": "text"
+        },
+        {
+            "Name": "/coa/namespace/grants-api-fn-arn",
+            "Type": "String",
+            "Value": "arn:aws:lambda:us-east-1:195698601974:function:coa-dev-grants-api",
+            "Version": 1,
+            "LastModifiedDate": "2026-10-21T13:21:37.318000-04:00",
+            "ARN": "arn:aws:ssm:us-east-1:195698601974:parameter/coa/namespace/grants-api-fn-arn",
+            "DataType": "text"
+        },
+        {
+            "Name": "/coa/namespace/namespaces-table-name",
+            "Type": "String",
+            "Value": "coa-dev-namespaces",
+            "Version": 1,
+            "LastModifiedDate": "2026-10-21T13:21:27.040000-04:00",
+            "ARN": "arn:aws:ssm:us-east-1:195698601974:parameter/coa/namespace/namespaces-table-name",
+            "DataType": "text"
+        },
+        {
+            "Name": "/coa/namespace/platform-roles-api-fn-arn",
+            "Type": "String",
+            "Value": "arn:aws:lambda:us-east-1:195698601974:function:coa-dev-platform-roles-api",
+            "Version": 1,
+            "LastModifiedDate": "2026-10-21T13:21:38.667000-04:00",
+            "ARN": "arn:aws:ssm:us-east-1:195698601974:parameter/coa/namespace/platform-roles-api-fn-arn",
+            "DataType": "text"
+        },
+        {
+            "Name": "/coa/ontology-engine/api-fn-arn",
+            "Type": "String",
+            "Value": "arn:aws:lambda:us-east-1:195698601974:function:coa-dev-ontology-api-proxy",
+            "Version": 1,
+            "LastModifiedDate": "2026-10-21T13:29:41.054000-04:00",
+            "ARN": "arn:aws:ssm:us-east-1:195698601974:parameter/coa/ontology-engine/api-fn-arn",
+            "DataType": "text"
+        },
+        {
+            "Name": "/coa/ontology-engine/cluster-arn",
+            "Type": "String",
+            "Value": "arn:aws:ecs:us-east-1:195698601974:cluster/coa-dev-ontology-cluster",
+            "Version": 1,
+            "LastModifiedDate": "2026-10-21T13:28:57.384000-04:00",
+            "ARN": "arn:aws:ssm:us-east-1:195698601974:parameter/coa/ontology-engine/cluster-arn",
+            "DataType": "text"
+        },
+        {
+            "Name": "/coa/ontology-engine/dynamodb-table",
+            "Type": "String",
+            "Value": "coa-dev-ontology-engine",
+            "Version": 1,
+            "LastModifiedDate": "2026-10-21T13:29:10.028000-04:00",
+            "ARN": "arn:aws:ssm:us-east-1:195698601974:parameter/coa/ontology-engine/dynamodb-table",
+            "DataType": "text"
+        },
+        {
+            "Name": "/coa/ontology-engine/endpoint",
+            "Type": "String",
+            "Value": "http://ontology-engine.coa-dev-services.local:8001",
+            "Version": 1,
+            "LastModifiedDate": "2026-10-21T13:28:55.400000-04:00",
+            "ARN": "arn:aws:ssm:us-east-1:195698601974:parameter/coa/ontology-engine/endpoint",
+            "DataType": "text"
+        },
+        {
+            "Name": "/coa/ontology-engine/service-name",
+            "Type": "String",
+            "Value": "coa-dev-ontology-engine",
+            "Version": 1,
+            "LastModifiedDate": "2026-10-21T13:32:18.804000-04:00",
+            "ARN": "arn:aws:ssm:us-east-1:195698601974:parameter/coa/ontology-engine/service-name",
+            "DataType": "text"
+        },
+        {
+            "Name": "/coa/ontology-engine/service-namespace-arn",
+            "Type": "String",
+            "Value": "arn:aws:servicediscovery:us-east-1:195698601974:namespace/ns-xexc27paqkflet2x",
+            "Version": 1,
+            "LastModifiedDate": "2026-10-21T13:28:55.337000-04:00",
+            "ARN": "arn:aws:ssm:us-east-1:195698601974:parameter/coa/ontology-engine/service-namespace-arn",
+            "DataType": "text"
+        },
+        {
+            "Name": "/coa/opensearch/collection-arn",
+            "Type": "String",
+            "Value": "arn:aws:aoss:us-east-1:195698601974:collection/s2hmk2qxb2o8fufcx05m",
+            "Version": 1,
+            "LastModifiedDate": "2026-10-21T13:09:58.400000-04:00",
+            "ARN": "arn:aws:ssm:us-east-1:195698601974:parameter/coa/opensearch/collection-arn",
+            "DataType": "text"
+        },
+        {
+            "Name": "/coa/opensearch/collection-name",
+            "Type": "String",
+            "Value": "coa-dev-vector-store",
+            "Version": 1,
+            "LastModifiedDate": "2026-10-21T13:09:21.276000-04:00",
+            "ARN": "arn:aws:ssm:us-east-1:195698601974:parameter/coa/opensearch/collection-name",
+            "DataType": "text"
+        },
+        {
+            "Name": "/coa/opensearch/endpoint",
+            "Type": "String",
+            "Value": "https://s2hmk2qxb2o8fufcx05m.aoss.us-east-1.on.aws",
+            "Version": 1,
+            "LastModifiedDate": "2026-10-21T13:09:58.521000-04:00",
+            "ARN": "arn:aws:ssm:us-east-1:195698601974:parameter/coa/opensearch/endpoint",
+            "DataType": "text"
+        },
+        {
+            "Name": "/coa/query/athena-results-bucket",
+            "Type": "String",
+            "Value": "coa-dev-athena-results-195698601974",
+            "Version": 1,
+            "LastModifiedDate": "2026-10-21T13:09:51.682000-04:00",
+            "ARN": "arn:aws:ssm:us-east-1:195698601974:parameter/coa/query/athena-results-bucket",
+            "DataType": "text"
+        },
+        {
+            "Name": "/coa/query/athena-spill-bucket",
+            "Type": "String",
+            "Value": "coa-dev-athena-spill-195698601974",
+            "Version": 1,
+            "LastModifiedDate": "2026-10-21T13:09:51.936000-04:00",
+            "ARN": "arn:aws:ssm:us-east-1:195698601974:parameter/coa/query/athena-spill-bucket",
+            "DataType": "text"
+        },
+        {
+            "Name": "/coa/serve/aoss-proxy-lambda-arn",
+            "Type": "String",
+            "Value": "arn:aws:lambda:us-east-1:195698601974:function:coa-dev-aoss-search-proxy",
+            "Version": 1,
+            "LastModifiedDate": "2026-10-21T13:25:50.827000-04:00",
+            "ARN": "arn:aws:ssm:us-east-1:195698601974:parameter/coa/serve/aoss-proxy-lambda-arn",
+            "DataType": "text"
+        },
+        {
+            "Name": "/coa/serve/runtime-arn",
+            "Type": "String",
+            "Value": "arn:aws:bedrock-agentcore:us-east-1:195698601974:runtime/coa_dev_context_manager-8Q2n5Z9YSY",
+            "Version": 1,
+            "LastModifiedDate": "2026-10-21T13:28:17.135000-04:00",
+            "ARN": "arn:aws:ssm:us-east-1:195698601974:parameter/coa/serve/runtime-arn",
+            "DataType": "text"
+        },
+        {
+            "Name": "/coa/smus/domain-id",
+            "Type": "String",
+            "Value": "dzd-an1jcijj3e3hpj",
+            "Version": 1,
+            "LastModifiedDate": "2026-10-21T13:21:36.299000-04:00",
+            "ARN": "arn:aws:ssm:us-east-1:195698601974:parameter/coa/smus/domain-id",
+            "DataType": "text"
+        },
+        {
+            "Name": "/coa/smus/dz-project-access-role-arn",
+            "Type": "String",
+            "Value": "arn:aws:iam::195698601974:role/coa-dev-dz-project-access",
+            "Version": 1,
+            "LastModifiedDate": "2026-10-21T13:21:55.649000-04:00",
+            "ARN": "arn:aws:ssm:us-east-1:195698601974:parameter/coa/smus/dz-project-access-role-arn",
+            "DataType": "text"
+        },
+        {
+            "Name": "/coa/smus/login-role-arn",
+            "Type": "String",
+            "Value": "arn:aws:iam::195698601974:role/coa-dev-smus-login",
+            "Version": 1,
+            "LastModifiedDate": "2026-10-21T13:21:47.461000-04:00",
+            "ARN": "arn:aws:ssm:us-east-1:195698601974:parameter/coa/smus/login-role-arn",
+            "DataType": "text"
+        },
+        {
+            "Name": "/coa/sources/api-fn-arn",
+            "Type": "String",
+            "Value": "arn:aws:lambda:us-east-1:195698601974:function:coa-dev-sources-api",
+            "Version": 1,
+            "LastModifiedDate": "2026-10-21T13:27:16.609000-04:00",
+            "ARN": "arn:aws:ssm:us-east-1:195698601974:parameter/coa/sources/api-fn-arn",
+            "DataType": "text"
+        },
+        {
+            "Name": "/coa/sources/api-role-arn",
+            "Type": "String",
+            "Value": "arn:aws:iam::195698601974:role/coa-dev-sources-api-role",
+            "Version": 1,
+            "LastModifiedDate": "2026-10-21T13:25:45.310000-04:00",
+            "ARN": "arn:aws:ssm:us-east-1:195698601974:parameter/coa/sources/api-role-arn",
+            "DataType": "text"
+        },
+        {
+            "Name": "/coa/sources/db-enrichment-role-arn",
+            "Type": "String",
+            "Value": "arn:aws:iam::195698601974:role/coa-dev-sources-DbEnrichmentTaskDefTaskRole621D1D1E-HgaAmb2349vH",
+            "Version": 1,
+            "LastModifiedDate": "2026-10-21T13:25:44.165000-04:00",
+            "ARN": "arn:aws:ssm:us-east-1:195698601974:parameter/coa/sources/db-enrichment-role-arn",
+            "DataType": "text"
+        },
+        {
+            "Name": "/coa/sources/db-scan-queue-url",
+            "Type": "String",
+            "Value": "https://sqs.us-east-1.amazonaws.com/195698601974/coa-dev-sources-db-scan-queue",
+            "Version": 1,
+            "LastModifiedDate": "2026-10-21T13:25:30.458000-04:00",
+            "ARN": "arn:aws:ssm:us-east-1:195698601974:parameter/coa/sources/db-scan-queue-url",
+            "DataType": "text"
+        },
+        {
+            "Name": "/coa/sources/db-scan-state-machine-arn",
+            "Type": "String",
+            "Value": "arn:aws:states:us-east-1:195698601974:stateMachine:coa-dev-sources-db-scan-pipeline",
+            "Version": 1,
+            "LastModifiedDate": "2026-10-21T13:27:16.661000-04:00",
+            "ARN": "arn:aws:ssm:us-east-1:195698601974:parameter/coa/sources/db-scan-state-machine-arn",
+            "DataType": "text"
+        },
+        {
+            "Name": "/coa/sources/doc-ingestion-queue-url",
+            "Type": "String",
+            "Value": "https://sqs.us-east-1.amazonaws.com/195698601974/coa-dev-sources-doc-ingestion-queue",
+            "Version": 1,
+            "LastModifiedDate": "2026-10-21T13:25:29.661000-04:00",
+            "ARN": "arn:aws:ssm:us-east-1:195698601974:parameter/coa/sources/doc-ingestion-queue-url",
+            "DataType": "text"
+        },
+        {
+            "Name": "/coa/sources/doc-ingestion-state-machine-arn",
+            "Type": "String",
+            "Value": "arn:aws:states:us-east-1:195698601974:stateMachine:coa-dev-sources-doc-ingestion-pipeline",
+            "Version": 1,
+            "LastModifiedDate": "2026-10-21T13:27:05.335000-04:00",
+            "ARN": "arn:aws:ssm:us-east-1:195698601974:parameter/coa/sources/doc-ingestion-state-machine-arn",
+            "DataType": "text"
+        },
+        {
+            "Name": "/coa/sources/federation-provisioner-role-arn",
+            "Type": "String",
+            "Value": "arn:aws:iam::195698601974:role/coa-dev-sources-FederationProvisionerFnServiceRole4-18GJjMfH6LdH",
+            "Version": 1,
+            "LastModifiedDate": "2026-10-21T13:26:04.942000-04:00",
+            "ARN": "arn:aws:ssm:us-east-1:195698601974:parameter/coa/sources/federation-provisioner-role-arn",
+            "DataType": "text"
+        },
+        {
+            "Name": "/coa/sources/source-scan-jobs-table-name",
+            "Type": "String",
+            "Value": "coa-dev-source-scan-jobs",
+            "Version": 1,
+            "LastModifiedDate": "2026-10-21T13:25:51.234000-04:00",
+            "ARN": "arn:aws:ssm:us-east-1:195698601974:parameter/coa/sources/source-scan-jobs-table-name",
+            "DataType": "text"
+        },
+        {
+            "Name": "/coa/sources/sources-table-name",
+            "Type": "String",
+            "Value": "coa-dev-sources",
+            "Version": 1,
+            "LastModifiedDate": "2026-10-21T13:25:51.114000-04:00",
+            "ARN": "arn:aws:ssm:us-east-1:195698601974:parameter/coa/sources/sources-table-name",
+            "DataType": "text"
+        },
+        {
+            "Name": "/coa/vkg/cluster-arn",
+            "Type": "String",
+            "Value": "arn:aws:ecs:us-east-1:195698601974:cluster/coa-dev-vkg-cluster",
+            "Version": 1,
+            "LastModifiedDate": "2026-10-21T13:18:40.919000-04:00",
+            "ARN": "arn:aws:ssm:us-east-1:195698601974:parameter/coa/vkg/cluster-arn",
+            "DataType": "text"
+        },
+        {
+            "Name": "/coa/vkg/container-image",
+            "Type": "String",
+            "Value": "195698601974.dkr.ecr.us-east-1.amazonaws.com/cdk-hnb659fds-container-assets-195698601974-us-east-1:11c2eef43c934f736adc27b73822bab23756e172362a465c629514c00d926288",
+            "Version": 1,
+            "LastModifiedDate": "2026-10-21T13:18:38.634000-04:00",
+            "ARN": "arn:aws:ssm:us-east-1:195698601974:parameter/coa/vkg/container-image",
+            "DataType": "text"
+        },
+        {
+            "Name": "/coa/vkg/endpoint",
+            "Type": "String",
+            "Value": "http://vkg.coa-dev-services.local:8080",
+            "Version": 1,
+            "LastModifiedDate": "2026-10-21T13:18:38.594000-04:00",
+            "ARN": "arn:aws:ssm:us-east-1:195698601974:parameter/coa/vkg/endpoint",
+            "DataType": "text"
+        }
+    ]
+}

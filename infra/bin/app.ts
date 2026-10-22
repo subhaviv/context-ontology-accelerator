@@ -40,6 +40,7 @@ import {
 
 // Service stacks
 import {
+  AgentMcpStack,
   ApiStack,
   DataLayerStack,
   McpStack,
@@ -47,6 +48,7 @@ import {
   NamespaceStack,
   OntologyStack,
   ServeStack,
+  ServeAgentStack,
   SourcesStack,
   VkgStack,
 } from "../lib/stacks/services";
@@ -545,6 +547,53 @@ async function deploy(): Promise<void> {
   });
   mcp.addDependency(serve); // needs CM runtime-arn SSM param
   mcp.addDependency(auth); // needs /issuer, /userpool-client-id, /mcp-client-id SSM params
+
+  // ── Agent read path (Beacon as a system) ───────────────────────────
+  // serve-agent: a SECOND Context Manager runtime with IAM SigV4 inbound auth
+  // (no JWT authorizer) for system callers. Same image + orchestrator as serve;
+  // its own deploy/rollback fate so it cannot affect the human serve runtime.
+  const serveAgent = new ServeAgentStack(
+    app,
+    `${stackPrefix}-serve-agent`,
+    {
+      vpc: network.vpc,
+      rolesTable: authnz.rolesTable,
+      resourceRoleMappingsTable: authnz.resourceRoleMappingsTable,
+      aossSecurityGroup: network.aossSecurityGroup,
+      neptuneSecurityGroup: network.neptuneSecurityGroup,
+      lambdaSecurityGroup: network.lambdaSecurityGroup,
+      neptuneClusterArn: storage.neptuneClusterArn,
+      neptuneEndpoint: storage.neptuneClusterEndpoint,
+      ontologyBucketArn: storage.ontologyArtifactsBucket.bucketArn,
+      athenaResultsBucketName: storage.athenaResultsBucket.bucketName,
+      vkgEndpoint: `http://vkg.${prefix}-${envName}-services.local:${vkg.containerPort}`,
+      agentCoreAzNames,
+      bedrockLlmModelId: config.bedrockLlmModelId,
+      bedrockEmbedModelId: config.bedrockEmbedModelId,
+      allowedOverrideModels: config.allowedOverrideModels,
+    },
+  );
+  serveAgent.addDependency(smusDomain); // /namespace/namespaces-table-name SSM param
+  // No auth dependency: the IAM-authorized runtime reads no /issuer SSM param.
+
+  // agent-mcp: the MCP wrapper that accepts Beacon's Loom M2M (client_id) token
+  // and SigV4-forwards to serve-agent. Gated on the beacon_m2m_client_id context
+  // key (the Loom M2M client is created out-of-band), so a normal deploy without
+  // that key does not require the client to exist yet.
+  const beaconM2mClientId = app.node.tryGetContext("beacon_m2m_client_id") as
+    | string
+    | undefined;
+  if (beaconM2mClientId?.trim()) {
+    const agentMcp = new AgentMcpStack(app, `${stackPrefix}-agent-mcp`, {
+      vpc: network.vpc,
+      rolesTable: authnz.rolesTable,
+      resourceRoleMappingsTable: authnz.resourceRoleMappingsTable,
+      agentCoreAzNames,
+      beaconM2mClientId: beaconM2mClientId.trim(),
+    });
+    agentMcp.addDependency(serveAgent); // needs /serve/agent-runtime-arn SSM param
+    agentMcp.addDependency(auth); // needs /issuer SSM param (Loom issuer)
+  }
 
   // Every stack with a VPC Lambda waits for EniWarmStack, so its functions reuse
   // the pre-warmed Hyperplane ENIs instead of each paying a ~4 min create.

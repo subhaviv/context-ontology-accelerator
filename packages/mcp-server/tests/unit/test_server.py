@@ -223,8 +223,8 @@ class TestClientSingletons:
         monkeypatch.setenv("CM_RUNTIME_ARN", "arn:aws:bedrock-agentcore:us-east-1:1:runtime/cm")
         created: list[dict] = []
 
-        def fake_ctor(runtime_arn, region):
-            created.append({"arn": runtime_arn, "region": region})
+        def fake_ctor(runtime_arn, region, sigv4=False):
+            created.append({"arn": runtime_arn, "region": region, "sigv4": sigv4})
             return object()
 
         monkeypatch.setattr(server, "ContextManagerClient", fake_ctor)

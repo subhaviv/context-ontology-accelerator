@@ -1,0 +1,41 @@
+{
+    "UserPoolClient": {
+        "UserPoolId": "us-east-1_hSuaktFXR",
+        "ClientName": "coa-dev-client",
+        "ClientId": "7ru7vrf5a9m1dvpgq2eocg9esp",
+        "LastModifiedDate": "2026-10-21T13:40:00.049000-04:00",
+        "CreationDate": "2026-10-21T13:03:44.608000-04:00",
+        "RefreshTokenValidity": 720,
+        "TokenValidityUnits": {
+            "RefreshToken": "minutes"
+        },
+        "ExplicitAuthFlows": [
+            "ALLOW_REFRESH_TOKEN_AUTH",
+            "ALLOW_USER_PASSWORD_AUTH",
+            "ALLOW_USER_SRP_AUTH"
+        ],
+        "SupportedIdentityProviders": [
+            "COGNITO"
+        ],
+        "CallbackURLs": [
+            "http://localhost:5173/authenticate/",
+            "https://d3upg0x9odcmsc.cloudfront.net/authenticate/"
+        ],
+        "LogoutURLs": [
+            "https://d3upg0x9odcmsc.cloudfront.net/"
+        ],
+        "AllowedOAuthFlows": [
+            "code"
+        ],
+        "AllowedOAuthScopes": [
+            "email",
+            "openid",
+            "profile"
+        ],
+        "AllowedOAuthFlowsUserPoolClient": true,
+        "PreventUserExistenceErrors": "ENABLED",
+        "EnableTokenRevocation": true,
+        "EnablePropagateAdditionalUserContextData": false,
+        "AuthSessionValidity": 3
+    }
+}

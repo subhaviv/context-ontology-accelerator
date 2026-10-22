@@ -77,7 +77,10 @@ def _get_cm_client() -> ContextManagerClient:
             raise RuntimeError(
                 "CM_RUNTIME_ARN env var not set. The MCP stack must pass the Context Manager runtime ARN."
             )
-        _cm_client = ContextManagerClient(runtime_arn=cm_arn, region=config.aws_region)
+        # On the system (sigv4) path the wrapper signs the CM invoke with its own
+        # role and reaches the IAM-authorized serve-agent runtime; on the human
+        # path it forwards the caller's bearer token to the JWT serve runtime.
+        _cm_client = ContextManagerClient(runtime_arn=cm_arn, region=config.aws_region, sigv4=config.cm_sigv4)
     return _cm_client
 
 
@@ -122,6 +125,31 @@ async def _resolve_caller_and_profile(
             raw_claims={},
         ), {"namespace": namespace_id}
 
+    if config.cm_sigv4:
+        # System (agent-MCP wrapper) path. The AgentCore authorizer already
+        # validated the caller's M2M token (allowedClients=client_id), so the
+        # caller IS trusted — but it carries no user identity. Build the system
+        # principal from CONFIG (set by the agent-mcp stack from the verified
+        # client), NOT from the request body, so groups come from a validated
+        # identity. serve-agent's own namespace-admission gate + grant resolve
+        # then authorize this system principal against the namespace.
+        system_groups = [g.strip() for g in config.system_profile_groups.split(",") if g.strip()]
+        caller = CallerIdentity(
+            user_id=config.system_profile_user_id,
+            agent_id=config.system_profile_user_id,
+            namespaces=[],
+            roles=system_groups,
+            raw_claims={},
+        )
+        # Profile shape the CM entrypoint's no-JWT branch consumes: userId +
+        # idpGroups (mapped to Group::<group> in the RRM lookup).
+        profile = {
+            "namespace": namespace_id,
+            "userId": config.system_profile_user_id,
+            "idpGroups": system_groups,
+        }
+        return caller, profile
+
     caller = extract_caller_identity(auth_header)
     grant = await resolve_grant(caller, namespace_id, cedar_action=cedar_action)
     profile = grant.to_profile_dict()
@@ -138,6 +166,11 @@ def _extract_bearer_token(ctx: Any) -> str:
     Returns empty string if auth is disabled (local dev mode).
     """
     if not config.auth_enabled:
+        return ""
+    # System (sigv4) path: the CM client signs with its own role and ignores
+    # the bearer token, so there is nothing to forward. The caller's M2M token
+    # was already validated by the AgentCore authorizer.
+    if config.cm_sigv4:
         return ""
     if ctx is None:
         raise ValueError("Bearer token required but request context is None")
