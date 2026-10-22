@@ -19,27 +19,48 @@ AgentCore-Runtime-target pattern).
 **Reused — already deployed, NOT rebuilt:**
 - **Beacon** — the existing agent. We add a backend + a workflow DB + a committer; we do
   not create a new agent.
-- **COA MCP runtime** `coa_dev_mcp_server` — the governed front door with the read tools
-  (`query`, `graph_traverse`, `translate`, `rag_retrieval`, `list_metrics`,
-  `describe_schema`).
-- **COA serve runtime** `coa_dev_context_manager` — the resolver the MCP runtime
-  delegates to; Beacon does **not** call it directly.
+- **COA serve runtime** `coa_dev_context_manager` — the human (JWT) resolver; the
+  governed brain (Tier 1/2/3). Beacon does **not** touch this one.
 - **COA control-plane API** — used for seeding (Phase 0) and the Upload-route commit
   (Phase 4). Not an MCP surface.
-- **Enterprise MCP Governance Gateway** — the single governed MCP endpoint Beacon speaks
-  to; Cedar authz + audit + interceptors apply.
 
 **New — the only things this spec builds:**
-- `engine/graph/context_graph.py` — Beacon's `context` read backend (an MCP client of
-  the gateway).
+- **`coa-dev-serve-agent`** — a SECOND Context Manager runtime, same image as serve, with
+  **IAM SigV4** inbound auth (no JWT authorizer). The system-caller door. Built + deployed
+  + verified live this session (`infra/lib/stacks/services/serve-agent-stack.ts`).
+- **`coa-dev-agent-mcp`** — an MCP-protocol runtime wrapper that validates a **Loom M2M
+  `client_id`** (`allowedClients`) and SigV4-forwards to `serve-agent`. Built + deployed +
+  verified live this session (`infra/lib/stacks/services/agent-mcp-stack.ts`); a
+  CDK-managed resource policy locks `serve-agent` invoke to the wrapper role.
+- `engine/graph/context_graph.py` — Beacon's `context` read backend (an MCP client of the
+  **agent-mcp wrapper**, authenticated with a Loom M2M token).
 - `beacon-workflow` DynamoDB table + write path.
 - The Upload-route committer (control-plane API).
-- One new gateway target registering the COA MCP server + its Cedar read permits.
 
-**Read path (corrected):** Beacon → **Enterprise MCP Governance Gateway** → COA MCP
-runtime → COA serve runtime → COA Neptune. Beacon does NOT call COA's serve REST endpoint
-directly; it calls MCP tools through the gateway. **Write path:** Beacon → COA
-control-plane API (Upload route) — not through the gateway, not an MCP tool.
+**Read path (DECIDED 2026-10-22 — dedicated M2M MCP wrapper, NOT the enterprise gateway):**
+Beacon → **`coa-dev-agent-mcp`** (Loom M2M `client_id` auth) → **`coa-dev-serve-agent`**
+(IAM SigV4) → COA serve orchestrator → COA Neptune. Beacon authenticates to the wrapper
+with a **Loom M2M access token** minted from the `beacon-m2m` client
+(`3eodl9tehbne84sosoqqvnhqf4`), its secret stored in the **consumer account**
+(`beacon/coa-mcp-m2m`). **No cross-account IAM resource policy** — the two accounts share
+only a Loom identity; the wrapper→serve-agent hop is same-account SigV4.
+
+**Why NOT the enterprise MCP governance gateway (earlier draft):** the gateway path would
+route Beacon through the shared enterprise gateway as a `CoaContext` target. We chose the
+**dedicated wrapper** instead because (a) it was built and proven live end-to-end this
+session (M2M token → MCP `initialize`+`tools/list` 200), (b) it keeps Beacon's governed
+read on a purpose-built surface with its own M2M client + grant, independent of the shared
+gateway's lifecycle, and (c) it needed no change to the enterprise gateway. The wrapper
+runtime itself is MCP-protocol and runs the same `coa_mcp` server image, so Beacon still
+gets the governed read tools (`query`, `graph_traversal`, `list_metrics`,
+`describe_schema`, `translate_sparql`, `rag_retrieval`) — just via the dedicated wrapper,
+not the gateway. **Write path:** Beacon → COA control-plane API (Upload route) — unchanged;
+not an MCP tool.
+
+## Identity model (resolved 2026-10-21 — read this before the read-path decision)
+
+A long design pass settled how identity works across this system. The findings and the
+locked decisions:
 
 ## Identity model (resolved 2026-10-21 — read this before the read-path decision)
 
@@ -104,7 +125,7 @@ its own pool.
 
 | Action | Actor | Identity | COA surface | Grant |
 |---|---|---|---|---|
-| **Read** (ground the signal, autonomous, pre-score) | **Beacon** (agent) | Loom **M2M** agent client | MCP server via gateway | `data-analyst` (read-only) |
+| **Read** (ground the signal, autonomous, pre-score) | **Beacon** (agent) | Loom **M2M** agent client | agent-mcp wrapper → serve-agent | `data-analyst` (read-only) |
 | **Write** (commit the approved fact) | **Priya** (human, clicks Approve) | **Priya's own Loom user** token, live at approval time | control-plane REST (Upload route) | `data-steward` / ontology-manage |
 
 **Key correction (2026-10-21): Beacon does NOT write. Priya's approval writes.** The
@@ -150,28 +171,35 @@ authenticated-as-Priya call the UI naturally issues.
             signal
               │
               ▼
-   ┌───────────────────────┐   MCP tool call     ┌─────────────────────────┐   fronts    ┌────────────────────────┐
-   │  Beacon runtime        │  (Bearer JWT, M2M)  │ Enterprise MCP Governance │  (target)  │  COA MCP runtime        │
-   │  (AgentCore)           │ ──────────────────▶ │ Gateway                   │ ─────────▶ │  coa_dev_mcp_server     │
-   │  engine/graph/         │  query /            │ (Cedar authz + audit +    │            └──────────┬─────────────┘
-   │   context_graph.py     │  graph_traverse     │  interceptors)            │                       │ delegates
-   │  engine/signals.py     │                     └───────────────────────────┘                       ▼
-   │  (materiality score)   │                                                            COA serve runtime →
-   └─────────┬──────────────┘                                                            COA Neptune (the
-             │ PENDING row                                                               ENTERPRISE graph)
-             ▼                                                                                  ▲
-   ┌───────────────────────┐    approve      ┌───────────────┐   Upload route (control-plane)  │
-   │ DynamoDB beacon-workflow│ ─────────────▶ │ committer      │ ───────────────────────────────┘
-   │ (intake + approval)     │  (QA/Reg lead) │ (ingest fact)  │   → COA ontology calanthir-approved-facts
+   ┌───────────────────────┐  MCP tool call      ┌─────────────────────────┐  SigV4      ┌────────────────────────┐
+   │  Beacon runtime        │  (Bearer = Loom     │ coa-dev-agent-mcp        │  (same-acct)│  coa-dev-serve-agent    │
+   │  (AgentCore)           │   M2M token)        │ MCP wrapper              │ ──────────▶ │  (IAM SigV4 auth, no    │
+   │  engine/graph/         │ ──────────────────▶ │ authorizer:allowedClients│            │   JWT) — same image as  │
+   │   context_graph.py     │  query /            │  =[beacon-m2m]; SCL_CM_  │            │   serve; runs the        │
+   │  engine/signals.py     │  graph_traversal    │  SIGV4 forward           │            │   governed Tier 1/2/3    │
+   │  (materiality score)   │                     └───────────────────────────┘            └──────────┬─────────────┘
+   └─────────┬──────────────┘                                                                         │
+             │ PENDING row                                                                            ▼
+             ▼                                                                             COA Neptune (the
+   ┌───────────────────────┐    approve      ┌───────────────┐   Upload route (control-plane)  ENTERPRISE graph)
+   │ DynamoDB beacon-workflow│ ─────────────▶ │ committer      │ ───────────────────────────────▶ COA ontology
+   │ (intake + approval)     │  (QA/Reg lead) │ (ingest fact)  │   (Priya's live Loom token)     calanthir-approved-facts
    └───────────────────────┘                 └───────────────┘
 ```
+
+Beacon authenticates to the wrapper with a **Loom M2M token** (secret in the consumer
+account); the wrapper validates the `client_id` and SigV4-forwards to `serve-agent` as a
+system, which resolves the `Group::beacon-agents → data-analyst` grant and runs the
+governed cascade. No enterprise gateway, no cross-account IAM policy.
 
 **Design invariant:** COA Neptune is the only knowledge graph. `beacon-workflow`
 (DynamoDB) holds transient workflow state only. Beacon's own `neptune_graph.py` backend
 is **not** used for the enterprise graph in this design — the `context` backend reads
-through the governed gateway, and the enterprise write target is COA's Upload route.
-Reads are governed (gateway Cedar + audit); the write is a direct control-plane call
-(the MCP tool set is read-only — there is no MCP commit tool).
+through the **dedicated agent-mcp wrapper → serve-agent**, and the enterprise write target
+is COA's Upload route. The read is governed by serve-agent's own Cedar namespace gate +
+grant resolution (the `beacon-agents → data-analyst` grant); the write is a direct
+control-plane call under Priya's live Loom token (the MCP tool set is read-only — there is
+no MCP commit tool).
 
 ---
 
@@ -187,85 +215,105 @@ implementations (`local_graph.py`, `neptune_graph.py`). The reserved
 `local_graph.py` before coding).
 
 **What it does:**
-- Is an **MCP client of the Enterprise MCP Governance Gateway** (single governed MCP
-  endpoint, published to SSM `/enterprise-mcp-gateway/gateway/url`). It does **not** call
-  COA's serve REST endpoint directly.
-- Calls the COA MCP tools, which surface on the gateway as `<TargetName>___<tool>`
-  (triple underscore) — with target name `CoaContext` (see §1a), that is
-  `CoaContext___query`, `CoaContext___graph_traverse`, `CoaContext___translate`, etc.
+- Is an **MCP client of the dedicated `coa-dev-agent-mcp` wrapper** (its runtime ARN in
+  SSM `/coa/agent-mcp/runtime-arn`). It does **not** call COA's serve REST endpoint
+  directly and does **not** go through the enterprise gateway.
+- Authenticates with a **Loom M2M access token**: reads the `beacon/coa-mcp-m2m` secret
+  from the consumer account, mints a `client_credentials` token
+  (`client_id=3eodl9tehbne84sosoqqvnhqf4`, scope `loom/mcp:read`) from the Loom token
+  endpoint, and sends it as `Authorization: Bearer` on the MCP calls. The wrapper's
+  authorizer validates the `client_id` (`allowedClients`), then SigV4-forwards to
+  `serve-agent`.
+- Calls the COA MCP tools directly by their plain names (`query`, `graph_traversal`,
+  `translate_sparql`, `rag_retrieval`, `list_metrics`, `describe_schema`) — no gateway
+  target prefix, since there is no gateway in this path.
 - Translates the engine's graph queries into those tool calls:
-  - blast-radius / neighborhood traversal → `CoaContext___graph_traverse` (or
-    `CoaContext___query` natural-language, `execute=true`, `mode="standard"` to stay
-    under client timeout).
-  - entity resolution (closed-set guard) → `CoaContext___query` returning class IRIs,
-    which the adapter caches for the commit step.
+  - blast-radius / neighborhood traversal → `graph_traversal` (or `query`
+    natural-language, `execute=true`, `mode="standard"` to stay under client timeout).
+  - entity resolution (closed-set guard) → `query` returning class IRIs, which the
+    adapter caches for the commit step.
 - Returns results in the shape the engine expects (same DTOs `neptune_graph` returns),
   so `signals.py` is unchanged.
 
-**Auth (per requirements §7):** Beacon presents a **Cognito JWT to the gateway** (the
-gateway is `authorizerType=CUSTOM_JWT`); the gateway runs Cedar authz + audit +
-interceptors, then invokes the COA MCP target using the gateway's own outbound
-credential (see §1a). Beacon carries `session.id` for correlation; **no** user token,
-**no** OBO. **[verify]** Beacon's M2M client id is in the gateway's `allowedClients`.
+**Auth (DECIDED — Loom M2M, no gateway, no OBO):** Beacon mints a **Loom M2M token** from
+the `beacon-m2m` client (secret in the consumer account) and presents it to the
+**agent-mcp wrapper**, whose AgentCore authorizer validates `client_id` via
+`allowedClients=[beacon-m2m]`. The wrapper maps the verified M2M identity to the system
+profile (`userId=beacon-agent`, `groups=["beacon-agents"]`) and SigV4-forwards to
+`serve-agent`; serve-agent's no-JWT branch resolves `Group::beacon-agents → data-analyst`
+on the `pharma` namespace and runs the governed cascade. **No** user token, **no** OBO,
+**no** cross-account IAM policy. Proven live this session: M2M `initialize`+`tools/list`
+returned 200, and a direct no-JWT SigV4 invoke of serve-agent ran the full Tier-1/2/3
+cascade under `groups=['beacon-agents']`.
 
 **Underlying COA `Query` contract (confirmed, wrapped by the MCP `query` tool):**
 `POST /namespaces/{namespaceId}/query` → body `{query, execute, mode, strategy,
 timeoutMs, maxResults}`; response `{result: QueryResult, requestId, sessionId}`.
 
-**AC1 mapping:** the adapter answers the §4 signal via a gateway MCP tool call and
+**AC1 mapping:** the adapter answers the §4 signal via a wrapper MCP tool call and
 returns the grounded impact (sites, EU count, patient count) — no local graph consulted,
-and the call is Cedar-authorized + audited at the gateway.
+and the read is Cedar-authorized (serve-agent's namespace gate + the `beacon-agents →
+data-analyst` grant).
 
 ---
 
-## 1a. Register the COA MCP server as a governed gateway target
+## 1a. The dedicated M2M MCP wrapper + serve-agent (BUILT + DEPLOYED this session)
 
-**Pattern selection (verified):** The gateway supports two remote-MCP-target shapes:
-- **Static public HTTPS MCP** (`hcls_stack.py`): a plain declarative `CfnGatewayTarget`
-  with `McpTargetConfigurationProperty(mcp_server=McpServerTargetConfigurationProperty(
-  endpoint="https://…/mcp", listing_mode="DEFAULT"))`. Simple, no credential provider.
-- **AgentCore Runtime MCP** (Atlassian connector): the endpoint is a **Runtime
-  invocation URL derived from the runtime ARN** (url-encoded), needs a credential
-  provider, and is wired via the connector's **custom-resource** path, not the plain
-  declarative target.
+Instead of registering COA's MCP on the enterprise gateway, this design uses a
+**dedicated read path** that was built, deployed, and proven live on 2026-10-22. Two new
+runtimes in `agentops-publisher` (both from the same `coa_mcp`/serve container image):
 
-**COA's MCP is the Runtime shape, not the static one** — confirmed:
-`McpRuntimeArn = arn:aws:bedrock-agentcore:us-east-1:195698601974:runtime/coa_dev_mcp_server-MkoY1fCoME`.
-So registering it follows the **Atlassian/Runtime pattern**, not the simpler HCLS one.
-This is a real wrinkle, not a one-line config: the docstring in `hcls_stack.py` says the
-static path is only for a "STATIC public https URL … NOT a Runtime invocation URL."
+**`coa-dev-serve-agent`** (`infra/lib/stacks/services/serve-agent-stack.ts`) — a second
+Context Manager runtime, **IAM SigV4 inbound auth** (no `authorizerConfiguration` → IAM by
+AWS default, verified live: `authorizerConfiguration=null`, status READY). Same image and
+orchestrator as `serve`, its own deploy/rollback fate so it cannot affect the human serve
+runtime. Writes its ARN to SSM `/coa/serve/agent-runtime-arn`. Runtime:
+`coa_dev_context_manager_agent-7PMkexCgUR`.
 
-**Steps to add COA as a target (new stack `cdk/connectors/coa_stack.py`, modeled on the
-Atlassian connector):**
-1. Read the gateway's `gateway/id`, `gateway/arn`, `policy-engine/id` from SSM (deploy
-   order: core gateway stack first).
-2. Build the COA MCP **Runtime invocation endpoint** from `McpRuntimeArn` (url-encode the
-   ARN into the AgentCore runtime MCP URL form — **[verify]** exact URL template against
-   the Atlassian connector's code).
-3. Create the target: `CfnGatewayTarget` with
-   `targetConfiguration.mcp.mcp_server.endpoint=<runtime MCP url>`,
-   `listing_mode="DEFAULT"` (discover + cache COA's tools).
-4. **Outbound auth:** COA's MCP runtime requires inbound JWT, so the target needs a
-   **credential provider** so the gateway can authenticate to COA. **[verify]** whether
-   to use the gateway's `GATEWAY_IAM_ROLE` + a resource policy on the COA runtime, or an
-   OAuth client-credentials provider against COA's Cognito pool (the Atlassian connector
-   uses an OAuth credential provider; COA is M2M, so a `client_credentials` provider
-   against COA's pool is the likely fit). Target name: `CoaContext`.
-5. **Cedar permits:** one `CfnPolicy` per COA tool Beacon uses
-   (`CoaContext___query`, `CoaContext___graph_traverse`, `CoaContext___translate`),
-   `mode: ENFORCE` — a tool with no permit is denied-by-default AND hidden from
-   `tools/list`. Scope the permit to the QA/Reg principal/role, or an unconditional read
-   permit for authenticated gateway users (decide the posture; pharma context is not PHI).
-6. Deploy the new connector stack; verify `tools/list` through the gateway shows the
-   `CoaContext___*` tools and a `tools/call` succeeds.
+**`coa-dev-agent-mcp`** (`infra/lib/stacks/services/agent-mcp-stack.ts`) — an
+**MCP-protocol** runtime whose authorizer validates a Loom M2M `client_id`
+(`allowedClients=[3eodl9tehbne84sosoqqvnhqf4]`, no `allowedAudience` — M2M tokens carry
+`client_id`, not a user `aud`). Runs the `coa_mcp` server (`SCL_MCP_MODE=true`) with
+`SCL_CM_SIGV4=true` so its execution tools **SigV4-sign** the Context Manager invoke
+(the wrapper's own role) instead of forwarding a bearer token, and
+`SCL_SYSTEM_PROFILE_GROUPS=beacon-agents` so the system profile is derived from the
+verified M2M identity, not self-asserted. `CM_RUNTIME_ARN` points at `serve-agent`.
+Runtime: `coa_dev_agent_mcp_server-LHhaJ29S2u`.
 
-**Cross-account note:** the gateway and COA are both in `agentops-publisher`
-(195698601974), so this is same-account — no cross-account resource policy needed, unlike
-some earlier work. **[verify]** the gateway stack's account at deploy time.
+**Endpoint lock (CDK-managed):** a `ServeAgentEndpointLock` `AwsCustomResource` in
+`agent-mcp-stack.ts` calls `putResourcePolicy` on serve-agent's DEFAULT endpoint, naming
+the wrapper role as the sole `InvokeAgentRuntime` principal. It lives on the agent-mcp
+stack (which already depends on serve-agent via SSM) to avoid a circular dependency, with
+a policy fingerprint in the physical id so `onUpdate` re-fires on change. NOTE: a resource
+policy is additive (union with identity policies), so within the same account a broadly
+privileged role (e.g. Admin) can still invoke serve-agent — the policy is the
+cross-account-correct admission grant + single-intended-caller record, not a same-account
+Deny. Acceptable for dev; a strict same-account Deny is a pre-prod decision.
 
-**[verify] items for 1a:** exact Runtime-MCP URL template; credential-provider choice
-(IAM role + runtime resource policy vs. Cognito client-credentials); whether the gateway
-account == COA account.
+**Loom M2M client (BUILT this session):** `beacon-m2m` = `3eodl9tehbne84sosoqqvnhqf4` in
+the Loom pool (`us-east-1_NoErXe1QA`), `client_credentials` flow, scope `loom/mcp:read`.
+Its `{client_id, client_secret, token_endpoint, scope}` are stored as secret
+`beacon/coa-mcp-m2m` in the **consumer** account (`172873868821`). The token endpoint is
+`https://loom-agentops-195698601974.auth.us-east-1.amazoncognito.com/oauth2/token`.
+
+**Grant (WRITTEN live):** RRM row `Group::beacon-agents → data-analyst` on the `pharma`
+namespace (`36521996-76e9-433f-96cb-d2ec2db4e568`). Verified: serve's real
+`resolve_profile` resolves it for a no-JWT `groups=['beacon-agents']` caller.
+
+**Proven live (2026-10-22):** direct no-JWT SigV4 invoke of serve-agent ran the full
+Tier-1/2/3 cascade under `groups=['beacon-agents']`; the M2M path (mint token → MCP
+`initialize`+`tools/list`) returned 200 with all six `coa` read tools. The pharma
+namespace is unseeded (`sourceCount:0`) today, so the governed answer is correctly "no
+data" until Phase 0 runs — the auth/read path itself is proven.
+
+**Build order note:** this `1a` is DONE. `context_graph.py` (§1) is the remaining
+Beacon-side piece — an MCP client of `coa-dev-agent-mcp` using the `beacon/coa-mcp-m2m`
+secret.
+
+**Cross-account posture:** the wrapper→serve-agent hop is same-account
+(`agentops-publisher`); Beacon→wrapper is a Loom JWT hop (not IAM), so **no publisher
+resource names a consumer-account IAM principal** — the two accounts share only a Loom
+identity. This was a hard requirement (user, 2026-10-21).
 
 ---
 
@@ -405,12 +453,14 @@ the provenance literals are present. Demo renders before (no fact) / after (fact
 
 ## 7. Identity & Security (design-level)
 
-- Beacon runtime → **gateway**: Cognito JWT (`Authorization: Bearer`), `session.id`
-  baggage for correlation. The **gateway → COA MCP** hop uses the gateway's own outbound
-  credential (§1a), so Beacon never holds a COA token. **[verify]** Beacon's client id is
-  in the **gateway's** `allowedClients`; and COA's MCP runtime accepts the gateway's
-  outbound credential. If a config gap is on the COA side, escalate as a decision — do
-  not silently edit COA stacks.
+- Beacon runtime → **agent-mcp wrapper**: a **Loom M2M token** (`Authorization: Bearer`),
+  minted from the `beacon-m2m` client whose secret lives in the consumer account
+  (`beacon/coa-mcp-m2m`). The wrapper validates the `client_id` (`allowedClients`), maps
+  it to the system profile, and **SigV4-forwards** to serve-agent using its own role, so
+  Beacon never holds a COA/SigV4 credential and serve-agent never sees a user token.
+  Verified live: the wrapper's `allowedClients` contains `3eodl9tehbne84sosoqqvnhqf4`, and
+  serve-agent's endpoint policy admits only the wrapper role. No enterprise gateway, no
+  OBO, no cross-account IAM policy.
 - DynamoDB encrypted (AWS-managed KMS min; CMK if PHI-adjacent — pharma trial/patient
   counts are aggregate, not PHI, so AWS-managed is acceptable **[verify with user]**).
 - No secrets in code; any static key path follows the existing Beacon `.env` (gitignored)
@@ -431,9 +481,12 @@ the provenance literals are present. Demo renders before (no fact) / after (fact
 ## 9. Build Order (maps requirements §9)
 
 1. Phase 0 seed (gen data → S3 → Glue → namespace → induce).
-2. Phase 1a register COA MCP as a gateway target (`coa_stack.py`, Runtime pattern) +
-   Cedar permits; verify `CoaContext___*` tools list through the gateway.
-3. Phase 1 `context_graph.py` read adapter (MCP client of the gateway) + auth.
+2. Phase 1a — **DONE this session:** `serve-agent` (IAM) + `agent-mcp` wrapper (Loom M2M
+   `allowedClients`) deployed + verified live; `beacon-m2m` client + consumer-account
+   secret + `beacon-agents → data-analyst` grant in place.
+3. Phase 1 `context_graph.py` read adapter — an **MCP client of the agent-mcp wrapper**
+   (mint Loom M2M token from `beacon/coa-mcp-m2m` → MCP `tools/call`) + Beacon runtime
+   role grant `secretsmanager:GetSecretValue` on that secret.
 4. Phase 2 DynamoDB table + write path.
 5. Phase 3 review-screen approve/reject wiring.
 6. Phase 4 Upload-route committer (stream-triggered).
@@ -447,10 +500,11 @@ the provenance literals are present. Demo renders before (no fact) / after (fact
 - Whether scoring lives in `beacon_trigger.py` or the runtime.
 - Which CDK stack should own `beacon-workflow`.
 - COA uploaded-ontology prefix/predicate vocabulary (via `DownloadOntology` after Phase 0).
-- **Gateway target (§1a):** exact Runtime-MCP URL template (from the Atlassian connector);
-  credential-provider choice (gateway IAM role + COA runtime resource policy vs. Cognito
-  client-credentials provider against COA's pool); gateway account == COA account.
-- **Gateway `allowedClients`** includes Beacon's JWT client; COA MCP runtime accepts the
-  gateway's outbound credential.
-- Cedar permit posture for `CoaContext___*` (scoped to QA/Reg role vs. unconditional read).
+- **context_graph.py (§1):** map each engine signal query to a wrapper MCP `tools/call`
+  (`query`/`graph_traversal`) and parse the result into the scorer's signal DTOs; grant
+  Beacon's runtime role `secretsmanager:GetSecretValue` on `beacon/coa-mcp-m2m`
+  (same-account, consumer).
+- **serve-agent endpoint lock:** a strict same-account Deny (block all but the wrapper
+  role, incl. Admin) is a pre-prod decision — the current policy is additive, so broadly
+  privileged same-account roles can still invoke serve-agent in dev.
 - DynamoDB KMS choice (AWS-managed vs CMK) — confirm with user.
