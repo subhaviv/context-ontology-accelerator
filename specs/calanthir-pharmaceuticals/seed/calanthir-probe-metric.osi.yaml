@@ -1,0 +1,41 @@
+# OSI v1.0 — one probe metric for the Calanthir pharma namespace.
+# Proves the metric (Tier-1) path binds a {placeholder} dimension and executes
+# on the Glue/Athena source. Dialect ANSI_SQL (Athena speaks Trino -> ANSI_SQL
+# in OSI wire format). Import via Metrics -> Import OSI on the calanthir-pharma
+# namespace, or the import API.
+osi_spec_version: "1.0"
+
+metrics:
+  - name: supply_lead_time_variance
+    description: >-
+      Days a material's current lead time exceeds its baseline (actual
+      lead_time_days minus baseline_lead_days) for the given material.
+    expression:
+      dialects:
+        - dialect: ANSI_SQL
+          expression: >-
+            SELECT CAST(lead_time_days AS integer) - CAST(baseline_lead_days AS integer)
+            AS lead_time_variance_days
+            FROM materials
+            WHERE material_id = {material_id}
+    ai_context:
+      synonyms:
+        - lead time variance
+        - supply delay
+        - lead time slip
+        - expected vs baseline lead time
+      instructions: >-
+        Use when asked how far a material's supply lead time has slipped past
+        its baseline. Pass the material's id as the material_id dimension.
+      examples:
+        - How many days over baseline is material MAT-001's lead time?
+        - What is the supply lead-time variance for XR-7 API?
+    custom_extensions:
+      - vendor_name: COA
+        data:
+          data_source_id: 02436d7d-803e-4acb-a140-50ea45367069
+          source_table: materials
+          unit: days
+          return_type: integer
+          ontology_concepts:
+            - http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#Materials

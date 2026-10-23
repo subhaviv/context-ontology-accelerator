@@ -542,3 +542,65 @@ the provenance literals are present. Demo renders before (no fact) / after (fact
   role, incl. Admin) is a pre-prod decision — the current policy is additive, so broadly
   privileged same-account roles can still invoke serve-agent in dev.
 - DynamoDB KMS choice (AWS-managed vs CMK) — confirm with user.
+
+## 11. Scoring-in-COA — intent, status, and the deferred decision (2026-10-22)
+
+**Goal (still the direction):** move the scoring DEFINITION — per-signal weights and
+values — into COA Metrics, so each signal is a governed metric and Beacon becomes a
+summer, not a scorer. "The number a CFO sees equals the number the agent returns."
+
+**Status after this session — be honest: NOT done.** What moved vs. what did not:
+- DONE: proved ONE signal's VALUE can come from a governed COA metric
+  (`supply_lead_time_variance`): OSI import -> Glue source -> Tier-1 deterministic
+  (confidence 1.0) -> returns 13 for MAT-001, through the M2M wrapper. The hard plumbing
+  (Tier-1 binding on Glue, dimension argument, agnostic resolution) is proven.
+- NOT done: the SCORING MATH is still Beacon's Python. `engine/scoring/signals.py`
+  (weights/curves) and `score.py` (`score_fact` sum + classify) are unchanged. Only 1 of
+  6 signals has a metric. "Beacon just SUMS" is not yet true.
+
+**Two blockers to the full move (unresolved — resolve before building, not by guessing):**
+1. COA metrics carry NO weight field (CreateMetric/OSI contract has none). So a weight
+   must either be BAKED into each metric's SQL (metric returns weighted points, Beacon
+   sums) or COA gains a weight field (schema change). LEANING: bake into SQL — no COA
+   change, keeps determinism.
+2. The scorer still encodes DOMAIN STRUCTURE that must come from COA, not Python:
+   `clinical` (a pharma KPI attribute `score_fact` reads for escalation), the DRIVES
+   chain columns (`kpi_drives.from_kpi_id/to_kpi_id`), and — until the describe_schema
+   fix below — the FK->type map. These are NOT fixed by rewording; they are the
+   signals-as-metrics migration.
+
+**REJECTED: "one big metric that scores everything."** Tempting (one Tier-1 call, math in
+COA) but it is a trap: (a) it is one-big-metric-PER-ANCHOR-TYPE (material/supplier/batch/
+trial/site), each a wall of vertical-specific SQL — re-baking the domain shape we removed,
+just in SQL instead of Python, killing "new vertical = data drop"; (b) it collapses the
+six-signal explainability that IS the governance story; (c) it does not touch the actually-
+hard part (the resolver). CHOSEN TARGET when we do this: one SMALL metric per signal, each
+returning its WEIGHTED component, Beacon sums — keeps determinism, per-signal explainability,
+agnosticism (small OSI drops), and leaves the resolver unchanged.
+
+**Blocker (infra) found this session:** the self-describing FK->type map needs the ontology's
+OBJECT-property `rdfs:domain`/`rdfs:range` triples (standard Turtle), but no MCP tool exposes
+them deterministically: `describe_schema` returns only DATATYPE properties (with range),
+`query` has no raw-`sparql` param (NL only -> Tier-2, non-deterministic), `translate_sparql`
+returns the SPARQL string unexecuted. FIX (preferred): extend `describe_schema` to include
+object-properties with their range (it already returns datatype-prop ranges) — makes the
+standard structure readable for every consumer. Until then the FK->type map cannot be fully
+self-describing from the MCP surface.
+
+## 12. The resolver is the sauce (2026-10-22)
+
+Clarified this session: Beacon's durable value is the GOVERNED RESOLVER, not the scorer.
+The scoring math is commodity arithmetic; the hard, defensible work is turning messy prose
+into governed, deterministic inputs. The resolver's IP is its COUPLING to COA:
+- structured output (strict tool use) constrained to a COA-sourced DIMENSION ENUM;
+- name->id from COA entity LABELS (so "XR-7 API" -> MAT-001, abbreviations expanded from
+  the full names COA supplies — never a hardcoded hint);
+- anchor steered by COA-fetched DOMAIN CONTEXT (namespace profile + metric->dimension map +
+  class glossary, metric nodes filtered), all cached per instance;
+- every proposal disposed by a deterministic CLOSED-SET GUARD against COA's id universe;
+- emitting a `{dimension_name, value}` binding that lands in COA's deterministic Tier-1.
+
+LLM for the fuzzy front-end; COA for every allowed value; a deterministic guard as the
+boundary. That is the piece to keep investing in. Agnostic-by-construction: domain flavor
+is fetched (pharma/provider/payor = same engine, different data drop), never compiled.
+RULE: the resolver fetches domain knowledge from COA; it never hardcodes it.
