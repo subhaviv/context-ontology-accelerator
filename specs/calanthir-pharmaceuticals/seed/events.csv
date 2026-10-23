@@ -1,0 +1,4 @@
+event_id,name,event_type,date,severity,material_id,batch_id,site_id
+EVT-001,XR-7 release assay re-test deadline,assay_result_due,2026-11-12,high,MAT-001,,
+EVT-002,MD Anderson NUV-301 re-supply window,resupply_deadline,2026-11-18,high,,,SIT-001
+EVT-003,Release assay reagent customs clearance (transient hold),shipment_eta,2026-11-20,high,,BAT-003,

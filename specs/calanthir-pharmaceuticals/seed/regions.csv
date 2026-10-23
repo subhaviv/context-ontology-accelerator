@@ -1,0 +1,5 @@
+region_id,name,regulatory_body,gmp_jurisdiction
+REG-001,North America,FDA,US
+REG-002,United Kingdom,MHRA,UK
+REG-003,Japan,PMDA,JP
+REG-004,European Union,EMA,EU

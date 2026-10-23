@@ -1,0 +1,3 @@
+drug_id,name,modality,batch_id,therapeutic_area,development_phase
+DRG-001,NUV-301,small_molecule,BAT-001,oncology,phase_3
+DRG-002,NUV-210,biologic,BAT-002,immunology,phase_2

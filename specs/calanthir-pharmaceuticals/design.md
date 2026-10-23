@@ -250,6 +250,40 @@ cascade under `groups=['beacon-agents']`.
 `POST /namespaces/{namespaceId}/query` → body `{query, execute, mode, strategy,
 timeoutMs, maxResults}`; response `{result: QueryResult, requestId, sessionId}`.
 
+**State contract — the governed `query` MCP surface is STATELESS; the caller owns
+conversation state (CONFIRMED live 2026-10-22):**
+COA has two retrieval surfaces with *different, intentional* state models:
+- **Streaming / Playground surface** (interactive, human analyst): server-side sessions.
+  `serve.main._setup_streaming_session` reads `payload.sessionId` and
+  `SessionManager.create_or_resume(...)` loads prior turns, so a human can ask progressive
+  follow-ups ("…and last quarter?"). Multi-turn memory lives HERE.
+- **One-shot `query` execute surface** (programmatic M2M agents, e.g. Beacon via this
+  wrapper): **stateless per call.** The MCP `execute_query` tool accepts no `sessionId`
+  input and forwards none; serve's non-streaming path does not resume. Each `tools/call`
+  is an independent, idempotent, Cedar-authorized, self-describing query.
+
+This split is deliberate, not a gap: a governed enterprise READ path is safer stateless
+(every call authorized and audited on its own, no server-side conversation state to leak
+across callers/namespaces, any serve instance can answer). The cost — the caller re-sends
+resolved context each call — is cheap (entity ids) and is the standard MCP
+function-call contract.
+
+**Consequence — Beacon is the stateful orchestrator:** `context_graph.py` holds the
+resolved entity ids across a scoring run and injects them into each subsequent
+self-contained query (e.g. having resolved `MAT-001` in one signal, it passes `MAT-001`
+explicitly into the next, rather than re-asking COA to remember "XR-7"). The
+"progressively richer" effect lives in Beacon, which already holds the scoring state.
+Two-turn test proof (2026-10-22): a follow-up query using a pronoun ("which trials are
+affected by *it*?") returned confidence 0.0 / no context — serve started fresh — confirming
+the stateless contract. Each signal query MUST therefore be fully self-contained and
+reference entities by **attribute predicate** (`name contains 'XR-7'`) or **explicit id**
+(`MAT-001`), never by prior-turn reference and never by a guessed exact literal.
+
+If programmatic multi-turn is ever required (agents that genuinely refine over turns, not
+Beacon's fixed signal set), extending `sessionId` to the non-streaming path is a bounded
+two-sided change (wrapper accepts+forwards `sessionId`; serve's execute path calls
+`create_or_resume`) — tracked as a future enhancement, NOT built here.
+
 **AC1 mapping:** the adapter answers the §4 signal via a wrapper MCP tool call and
 returns the grounded impact (sites, EU count, patient count) — no local graph consulted,
 and the read is Cedar-authorized (serve-agent's namespace gate + the `beacon-agents →

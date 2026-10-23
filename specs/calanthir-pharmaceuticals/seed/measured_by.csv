@@ -1,0 +1,8 @@
+measured_by_id,kpi_id,supplier_id,material_id,batch_id,trial_id,site_id
+MB-001,KPI-001,,,,TRL-001,
+MB-002,KPI-002,,,,,SIT-001
+MB-003,KPI-003,,,BAT-001,,
+MB-004,KPI-004,,MAT-001,,,
+MB-005,KPI-005,,MAT-003,,,
+MB-006,KPI-006,,,BAT-003,,
+MB-007,KPI-007,SUP-003,,,,

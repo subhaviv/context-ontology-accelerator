@@ -1,0 +1,8 @@
+kpi_id,name,tier,clinical,unit,target_value,materiality_usd
+KPI-001,Trial Continuity Index,1,true,percent,100,0
+KPI-002,On-Time Dosing Rate,1,true,percent,98,0
+KPI-003,Batch Release On-Time Rate,2,false,percent,95,0
+KPI-004,Supply Lead-Time Variance,2,false,days,0,0
+KPI-005,Release Assay Turnaround Time,2,true,days,30,0
+KPI-006,Cold-Chain Excursion Rate,3,false,percent,2,0
+KPI-007,Supplier Qualification Coverage,3,false,percent,100,0

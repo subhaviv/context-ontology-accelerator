@@ -1,0 +1,6 @@
+site_id,trial_id,region_id,site_name,enrolled,next_dose_date,supply_buffer_days
+SIT-001,TRL-001,REG-001,MD Anderson,96,2026-11-18,9
+SIT-002,TRL-001,REG-002,Royal Marsden,74,2026-12-09,30
+SIT-003,TRL-001,REG-003,NCC Tokyo,55,2026-12-16,37
+SIT-004,TRL-002,REG-001,Mayo Clinic,88,2026-12-20,41
+SIT-005,TRL-002,REG-004,Charite Berlin,61,2026-12-15,36

@@ -1,0 +1,7 @@
+material_id,name,material_type,is_assay,supplier_id,lead_time_days,baseline_lead_days,gmp_grade
+MAT-001,XR-7 Active Pharmaceutical Ingredient,API,false,SUP-001,88,75,GMP
+MAT-002,NUV mAb Drug Substance,API,false,SUP-002,93,90,GMP
+MAT-003,XR-7 Release Assay Reagent Kit,assay_reagent,true,SUP-003,38,30,GMP
+MAT-004,Microcrystalline Cellulose,excipient,false,SUP-004,26,25,GMP
+MAT-005,Sterile Buffer Solution,excipient,false,SUP-004,21,20,GMP
+MAT-006,Cold-Chain Shipping Units,logistics,false,SUP-005,15,14,NA

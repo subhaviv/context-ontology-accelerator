@@ -1,0 +1,6 @@
+supplier_id,name,country,tier,qualified_status,risk_rating
+SUP-001,Kingsport API Labs,US,primary,qualified,low
+SUP-002,Nuvora Biologics,CH,primary,qualified,low
+SUP-003,Meridian Diagnostics Reagents,US,primary,qualified,low
+SUP-004,Ardsley Excipients,US,primary,qualified,low
+SUP-005,Aurora Cold Chain,DE,logistics,qualified,medium

@@ -1,0 +1,6 @@
+batch_id,material_id,lot,status,quantity_kg,release_test_status,expiry_date
+BAT-001,MAT-001,KAL-XR7-2409,qc_hold,42,blocked_on_assay,2027-03-15
+BAT-002,MAT-002,NVB-2411,released,18,passed,2027-06-30
+BAT-003,MAT-003,MDR-ASY-2410,in_transit,5,not_started,2026-11-20
+BAT-004,MAT-004,ARD-MCC-2408,released,500,passed,2028-01-01
+BAT-005,MAT-001,KAL-XR7-2501,scheduled,42,not_started,2027-09-15

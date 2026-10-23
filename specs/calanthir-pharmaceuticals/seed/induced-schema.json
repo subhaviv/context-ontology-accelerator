@@ -1,0 +1,469 @@
+{
+  "classes": [
+    {
+      "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#Batches",
+      "label": "batches",
+      "description": "Manufacturing batch records for pharmaceutical seed materials, tracking batch lifecycle from creation through quality testing and expiration, supporting traceability and regulatory compliance in pharmaceutical production.",
+      "parentClass": "b33758735",
+      "properties": [
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#batches_batchId",
+          "label": "batch_id",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Unique identifier for the manufacturing batch, used for traceability and regulatory tracking"
+        },
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#batches_expiryDate",
+          "label": "expiry_date",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Date after which the batch material is no longer suitable for use due to stability or regulatory requirements"
+        },
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#batches_lot",
+          "label": "lot",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Lot number assigned to the batch for inventory and traceability purposes"
+        },
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#batches_quantityKg",
+          "label": "quantity_kg",
+          "range": "http://www.w3.org/2001/XMLSchema#decimal",
+          "description": "Weight of the batch material in kilograms"
+        },
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#batches_releaseTestStatus",
+          "label": "release_test_status",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Quality assurance status indicating whether the batch has passed release testing and is approved for use"
+        },
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#batches_status",
+          "label": "status",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Current manufacturing or processing status of the batch (e.g., active, quarantined, released, rejected)"
+        }
+      ]
+    },
+    {
+      "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#Drugs",
+      "label": "drugs",
+      "description": "Master catalog of pharmaceutical drug candidates in development at Calanthir Pharma, containing core attributes including drug identifiers, names, therapeutic classifications, development phases, and batch tracking information for research and development pipeline management.",
+      "parentClass": "b33755919",
+      "properties": [
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#drugs_developmentPhase",
+          "label": "development_phase",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Current stage of drug development (e.g., discovery, preclinical, Phase I, Phase II, Phase III, Phase IV) indicating progress toward regulatory approval"
+        },
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#drugs_drugId",
+          "label": "drug_id",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Unique identifier for each drug candidate in the Calanthir Pharma development pipeline"
+        },
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#drugs_modality",
+          "label": "modality",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Type or class of therapeutic modality (e.g., small molecule, biologic, antibody, gene therapy) that defines the drug's mechanism of action"
+        },
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#drugs_name",
+          "label": "name",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Commercial or development name of the pharmaceutical drug candidate"
+        },
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#drugs_therapeuticArea",
+          "label": "therapeutic_area",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Medical or therapeutic domain in which the drug is intended to treat (e.g., oncology, cardiology, immunology)"
+        }
+      ]
+    },
+    {
+      "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#Events",
+      "label": "events",
+      "description": "Event log capturing critical operational and quality incidents occurring during pharmaceutical manufacturing and batch processing at Calanthir facilities. Records manufacturing events, quality deviations, material handling issues, and other significant occurrences tied to specific batches, materials, and production sites.",
+      "parentClass": "b33754895",
+      "properties": [
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#events_date",
+          "label": "date",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Date and time when the event occurred or was recorded"
+        },
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#events_eventId",
+          "label": "event_id",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Unique identifier for each recorded event or incident in the manufacturing process"
+        },
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#events_eventType",
+          "label": "event_type",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Categorical classification of the event (e.g., deviation, observation, equipment failure, material issue)"
+        },
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#events_name",
+          "label": "name",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Human-readable name or title describing the nature of the event"
+        },
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#events_severity",
+          "label": "severity",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Level of impact or urgency assigned to the event (e.g., critical, major, minor)"
+        },
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#events_siteId",
+          "label": "site_id",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Identifier of the manufacturing facility or production site where the event occurred"
+        }
+      ]
+    },
+    {
+      "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#KpiDrives",
+      "label": "kpi_drives",
+      "description": "Maps relationships between KPIs (Key Performance Indicators) showing which KPIs drive or influence other KPIs within the Calanthir pharmaceutical data ecosystem. This table establishes directional dependencies and cause-effect relationships between performance metrics.",
+      "parentClass": "b33752847",
+      "properties": [
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#kpiDrives_drivesId",
+          "label": "drives_id",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Unique identifier for each KPI drive relationship record"
+        }
+      ]
+    },
+    {
+      "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#Kpis",
+      "label": "kpis",
+      "description": "Master catalog of Key Performance Indicators (KPIs) used to measure pharmaceutical operational and clinical performance, including target values, materiality thresholds, and classification hierarchies for strategic monitoring and governance.",
+      "parentClass": "b33759759",
+      "properties": [
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#kpis_clinical",
+          "label": "clinical",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Flag or category indicating whether the KPI relates to clinical outcomes, safety, or regulatory compliance"
+        },
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#kpis_kpiId",
+          "label": "kpi_id",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Unique identifier for each Key Performance Indicator"
+        },
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#kpis_materialityUsd",
+          "label": "materiality_usd",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Monetary materiality threshold in USD that determines the significance or reporting importance of deviations from KPI targets"
+        },
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#kpis_name",
+          "label": "name",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Human-readable name or title of the Key Performance Indicator"
+        },
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#kpis_targetValue",
+          "label": "target_value",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "The target or goal value that the KPI should achieve or maintain"
+        },
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#kpis_tier",
+          "label": "tier",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Hierarchical classification level of the KPI indicating its strategic importance (e.g., executive, department, operational)"
+        },
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#kpis_unit",
+          "label": "unit",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Measurement unit for the KPI value (e.g., percentage, count, days, USD, etc.)"
+        }
+      ]
+    },
+    {
+      "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#Materials",
+      "label": "materials",
+      "description": "Master catalog of raw materials and pharmaceutical ingredients used in drug manufacturing, including sourcing information, lead times, and quality specifications for supply chain planning and procurement operations.",
+      "parentClass": "b33759247",
+      "properties": [
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#materials_baselineLeadDays",
+          "label": "baseline_lead_days",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Baseline or standard lead time in days established as a reference point for supply chain planning and performance comparison."
+        },
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#materials_gmpGrade",
+          "label": "gmp_grade",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Good Manufacturing Practice (GMP) grade or quality level of the material, indicating compliance with pharmaceutical manufacturing standards."
+        },
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#materials_isAssay",
+          "label": "is_assay",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Flag indicating whether the material requires assay testing or certificate of analysis (CoA) verification before use in manufacturing."
+        },
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#materials_leadTimeDays",
+          "label": "lead_time_days",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Current or typical number of calendar days required for procurement and delivery of the material from the supplier."
+        },
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#materials_materialId",
+          "label": "material_id",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Unique identifier for the material in the system, used as the primary key for tracking and referencing raw materials across operations."
+        },
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#materials_materialType",
+          "label": "material_type",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Classification of the material category such as active pharmaceutical ingredient (API), excipient, solvent, or packaging material."
+        },
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#materials_name",
+          "label": "name",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Commercial or chemical name of the material used for identification and procurement purposes."
+        }
+      ]
+    },
+    {
+      "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#MeasuredBy",
+      "label": "measured_by",
+      "description": "Junction table that maps KPI (Key Performance Indicator) measurements to their associated context dimensions including suppliers, materials, batches, trials, and measurement sites. This table enables tracking which KPIs are measured for specific pharmaceutical seed materials from particular suppliers across different production batches and trial sites.",
+      "parentClass": "b33755407",
+      "properties": [
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#measuredBy_measuredById",
+          "label": "measured_by_id",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Unique identifier for this measurement-to-KPI mapping record"
+        },
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#measuredBy_siteId",
+          "label": "site_id",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Reference to the physical or logical site where the measurement is performed"
+        }
+      ]
+    },
+    {
+      "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#Owns",
+      "label": "owns",
+      "description": "Association table that establishes ownership relationships between individuals and key performance indicators (KPIs) in the Calanthir pharmaceutical COA (Certificate of Analysis) induction system, enabling tracking of KPI accountability and responsibility assignment.",
+      "parentClass": "b33753359",
+      "properties": [
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#owns_ownsId",
+          "label": "owns_id",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Unique identifier for the ownership relationship record between a person and a KPI"
+        }
+      ]
+    },
+    {
+      "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#Persons",
+      "label": "persons",
+      "description": "Master registry of individuals within the Calanthir pharmaceutical organization, capturing core identity and organizational assignment details for workforce management and access control purposes.",
+      "parentClass": "b33753871",
+      "properties": [
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#persons_name",
+          "label": "name",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Full name or display name of the person"
+        },
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#persons_orgUnit",
+          "label": "org_unit",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Organizational unit, department, or business area to which the person is assigned"
+        },
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#persons_personId",
+          "label": "person_id",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Unique identifier for an individual within the pharmaceutical organization"
+        },
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#persons_role",
+          "label": "role",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Job title or functional role assigned to the person within the organization"
+        }
+      ]
+    },
+    {
+      "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#Regions",
+      "label": "regions",
+      "description": "Master reference table that defines pharmaceutical regulatory regions and their associated governance frameworks. Each region is linked to its primary regulatory body and GMP (Good Manufacturing Practice) jurisdiction, enabling compliance tracking and regulatory adherence across Calanthir Pharma's operations.",
+      "parentClass": "b33754383",
+      "properties": [
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#regions_gmpJurisdiction",
+          "label": "gmp_jurisdiction",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Designated GMP (Good Manufacturing Practice) jurisdiction classification for this region, used to determine manufacturing and quality standards compliance requirements"
+        },
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#regions_name",
+          "label": "name",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Human-readable name of the regulatory region (e.g., North America, European Union, Asia-Pacific)"
+        },
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#regions_regionId",
+          "label": "region_id",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Unique identifier for a pharmaceutical regulatory region"
+        },
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#regions_regulatoryBody",
+          "label": "regulatory_body",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Primary regulatory authority governing pharmaceutical operations in this region (e.g., FDA, EMA, PMDA)"
+        }
+      ]
+    },
+    {
+      "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#Suppliers",
+      "label": "suppliers",
+      "description": "Master registry of pharmaceutical suppliers including their geographic location, business tier classification, qualification status for regulatory compliance, and associated risk ratings. Used for supplier relationship management, procurement decisions, and supply chain risk assessment.",
+      "parentClass": "b33756431",
+      "properties": [
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#suppliers_country",
+          "label": "country",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Geographic country of origin or primary location where the supplier operates"
+        },
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#suppliers_name",
+          "label": "name",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Legal or business name of the pharmaceutical supplier"
+        },
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#suppliers_qualifiedStatus",
+          "label": "qualified_status",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Regulatory and compliance qualification status indicating whether the supplier meets pharmaceutical industry standards and requirements for procurement eligibility"
+        },
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#suppliers_riskRating",
+          "label": "risk_rating",
+          "range": "http://www.w3.org/2001/XMLSchema#decimal",
+          "description": "Assessment rating of supply chain and operational risk associated with the supplier for mitigation planning and monitoring purposes"
+        },
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#suppliers_supplierId",
+          "label": "supplier_id",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Unique identifier for each pharmaceutical supplier in the system"
+        },
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#suppliers_tier",
+          "label": "tier",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Business classification tier assigned to the supplier indicating their strategic importance or capability level in the supply chain"
+        }
+      ]
+    },
+    {
+      "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#TrialSites",
+      "label": "trial_sites",
+      "description": "Registry of clinical trial site locations and enrollment details, tracking individual research centers participating in pharmaceutical trials with their enrollment status, dosing schedules, and supply inventory management information.",
+      "parentClass": "b33756943",
+      "properties": [
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#trialSites_enrolled",
+          "label": "enrolled",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Number of participants currently enrolled or enrollment status at the trial site"
+        },
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#trialSites_nextDoseDate",
+          "label": "next_dose_date",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Scheduled date for the next dose administration or dosing event at the site"
+        },
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#trialSites_siteId",
+          "label": "site_id",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Unique identifier for the clinical trial research site or facility"
+        },
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#trialSites_siteName",
+          "label": "site_name",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Human-readable name of the clinical trial research site or facility"
+        },
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#trialSites_supplyBufferDays",
+          "label": "supply_buffer_days",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Number of days of medication supply buffer or safety stock maintained at the trial site for inventory management"
+        }
+      ]
+    },
+    {
+      "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#Trials",
+      "label": "trials",
+      "description": "Registry of pharmaceutical clinical trials conducted by Calanthir Pharma, tracking trial identification, drug candidates, regulatory phases, enrollment targets, and primary efficacy outcomes.",
+      "parentClass": "b33758223",
+      "properties": [
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#trials_name",
+          "label": "name",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Human-readable name or title of the clinical trial, often reflecting the study protocol or therapeutic area being investigated."
+        },
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#trials_phase",
+          "label": "phase",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Regulatory phase of the clinical trial (Phase I, II, III, IV) indicating the stage of drug development and investigation type, from safety assessment through post-market surveillance."
+        },
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#trials_primaryEndpoint",
+          "label": "primary_endpoint",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Primary efficacy or safety outcome measure that the trial is designed to evaluate, defining the main success criterion for the study."
+        },
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#trials_status",
+          "label": "status",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Current operational status of the clinical trial (e.g., active, recruiting, completed, suspended, terminated) reflecting its real-time state in the development lifecycle."
+        },
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#trials_targetEnrollment",
+          "label": "target_enrollment",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Planned or targeted number of study participants to be enrolled in the clinical trial, representing the sample size required to achieve statistical power."
+        },
+        {
+          "uri": "http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#trials_trialId",
+          "label": "trial_id",
+          "range": "http://www.w3.org/2001/XMLSchema#string",
+          "description": "Unique identifier for each clinical trial, serving as the primary reference key for trial tracking and linkage across systems."
+        }
+      ]
+    }
+  ],
+  "ontologyVersion": ""
+}

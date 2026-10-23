@@ -10,12 +10,14 @@ import * as ssm from "aws-cdk-lib/aws-ssm";
 import * as cr from "aws-cdk-lib/custom-resources";
 import { DockerImageAsset, Platform } from "aws-cdk-lib/aws-ecr-assets";
 import { Construct } from "constructs";
-import { resolveContext } from "../../context";
+import { prefixedLambdaArn, resolveContext } from "../../context";
 import { agentCoreSupportedSubnets } from "../../utils/agentcore-az";
 import { brandEnv } from "../../utils/brand-env";
 import { parseEcrImageUri } from "../../utils/ecr-utils";
 import { Paths } from "../../paths";
 import { SCLStack } from "../../constructs";
+import { METRIC_API_FUNCTION_NAME } from "./metric-service-stack";
+import { ONTOLOGY_API_PROXY_FUNCTION_NAME } from "./ontology-stack";
 
 export interface AgentMcpStackProps extends cdk.StackProps {
   /** VPC for AgentCore Runtime network interfaces. */
@@ -102,6 +104,22 @@ export class AgentMcpStack extends SCLStack {
     const serveAgentRuntimeArn = ssm.StringParameter.valueForStringParameter(
       this,
       `${ssmPrefix}/serve/agent-runtime-arn`,
+    );
+
+    // ── Discovery-tool backend Lambdas (describe_schema, list_metrics) ─
+    // These tools invoke the metric-service and ontology-proxy Lambdas
+    // DIRECTLY (not via the serve-agent HTTP path). The human MCP server
+    // (mcp-stack) sets these; the wrapper must too, or describe_schema /
+    // list_metrics fail with an empty-FunctionName boto3 validation error.
+    // Built from the functions' fixed names (same as mcp-stack), so no
+    // cross-stack dependency on metric-service / ontology stacks.
+    const metricServiceLambdaArn = prefixedLambdaArn(
+      this,
+      METRIC_API_FUNCTION_NAME,
+    );
+    const ontologyProxyLambdaArn = prefixedLambdaArn(
+      this,
+      ONTOLOGY_API_PROXY_FUNCTION_NAME,
     );
 
     // ── Loom issuer (same pool the humans use; M2M client lives there) ─
@@ -193,6 +211,11 @@ export class AgentMcpStack extends SCLStack {
         // Execution tools forward to the serve-AGENT (IAM) runtime, not the
         // human serve runtime.
         CM_RUNTIME_ARN: serveAgentRuntimeArn,
+        // Discovery tools (describe_schema, list_metrics) invoke these backend
+        // Lambdas directly. Without them describe_schema fails with an
+        // empty-FunctionName error. Same values the human MCP server sets.
+        METRIC_SERVICE_LAMBDA_ARN: metricServiceLambdaArn,
+        ONTOLOGY_PROXY_LAMBDA_ARN: ontologyProxyLambdaArn,
         SCL_MCP_MODE: "true",
         // Instruct the MCP execution tools to SigV4-sign the CM invoke (the
         // serve-agent runtime is IAM-authorized), instead of forwarding the
@@ -252,6 +275,16 @@ export class AgentMcpStack extends SCLStack {
         resources: [
           `arn:aws:bedrock-agentcore:${region}:${account}:runtime/*`,
         ],
+      }),
+    );
+
+    // Discovery tools invoke the metric-service and ontology-proxy Lambdas
+    // directly. The env vars above name them; this grants the invoke. (Same
+    // grant the human MCP server's role carries.)
+    runtime.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["lambda:InvokeFunction"],
+        resources: [metricServiceLambdaArn, ontologyProxyLambdaArn],
       }),
     );
 
