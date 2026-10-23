@@ -1,13 +1,26 @@
-# OSI v1.0 — Beacon scoring signal as a GOVERNED, DETERMINISTIC metric.
+# OSI v1.0 — Beacon scoring signals as GOVERNED, DETERMINISTIC metrics.
 #
-# breaks_expected: how far the material's current lead time exceeds its baseline,
-# normalised to [0,1] and multiplied by the signal WEIGHT (25) so the metric
-# returns WEIGHTED POINTS directly. Beacon SUMS these per-signal metrics instead
-# of computing the formula in Python (design §11 / §13: scores are deterministic
-# COA metrics, never LLM structured output).
+# Each metric returns its signal's WEIGHTED POINTS directly (value normalised to
+# [0,1] × the signal WEIGHT), so Beacon SUMS the per-signal metrics instead of
+# computing the formula in Python (design §11 / §13: scores are deterministic
+# COA metrics, never LLM structured output). Weights (sum 100):
+#   breaks_expected 25 | kpi_tier 20 | affected 20 | urgency 15 | novelty 10 | source_authority 10
 #
-# dialect ANSI_SQL (Athena/Trino); dimension {material_id}. Import on the
-# calanthir-pharma namespace, then Beacon reads it via list_metrics + a
+# Metric-able on today's surface (authored here):
+#   score_breaks_expected   dim {material_id}   over materials
+#   score_kpi_tier          dim {material_id}   over measured_by ⋈ kpis
+#   score_source_authority  dim {person_id}     over persons
+#   score_urgency           dim {material_id}   over events
+#   score_affected          dim {material_id}   over measured_by ⋈ kpi_drives(closure) ⋈ kpis ⋈ measured_by ⋈ trial_sites
+# NOT authored (stays in Beacon per §13): novelty (stateful).
+# affected IS reachable: impact propagates CAUSALLY through kpi_drives (material -> its
+# KPI -> driven clinical KPIs -> their trial/sites -> enrolled), proven live to return
+# 225 for MAT-001. The ontology carries the path (engine discovers the edges); this metric
+# authors only the DEFINITION of "affected" as governed policy (design §13, decision B).
+#
+# All tables live in one Glue DB (calanthir_pharma_seed), one COA data source;
+# columns are CSV strings so SQL CASTs. Dialect ANSI_SQL (Athena/Trino). Import
+# on the calanthir-pharma namespace, then Beacon reads each via list_metrics + a
 # dimension-bound query at Tier-1 (confidence 1.0).
 osi_spec_version: "1.0"
 
@@ -45,3 +58,173 @@ metrics:
           return_type: double
           ontology_concepts:
             - http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#Materials
+
+  - name: score_kpi_tier
+    description: >-
+      Beacon scoring signal 'kpi_tier' as weighted points: how material the KPI
+      that measures this material is. Tier 1 (most material) scores highest.
+      Normalised (4 - tier)/3 -> tier1=1.0, tier2=0.667, tier3=0.333, times the
+      signal weight 20. Deterministic; Beacon sums with the other per-signal metrics.
+    expression:
+      dialects:
+        - dialect: ANSI_SQL
+          expression: >-
+            SELECT MAX(
+              GREATEST(0.0, (4.0 - CAST(k.tier AS double)) / 3.0)
+            ) * 20 AS kpi_tier_points
+            FROM measured_by mb
+            JOIN kpis k ON k.kpi_id = mb.kpi_id
+            WHERE mb.material_id = {material_id}
+    ai_context:
+      synonyms:
+        - kpi tier points
+        - kpi materiality score
+        - measured-by tier score
+      instructions: >-
+        Beacon scoring signal. Returns weighted points (0-20) for how material the
+        KPI measuring this material is (tier 1 highest). Pass the material id as
+        material_id. Uses the highest-materiality (lowest-numbered) tier if the
+        material is measured by more than one KPI.
+    custom_extensions:
+      - vendor_name: COA
+        data:
+          data_source_id: 02436d7d-803e-4acb-a140-50ea45367069
+          source_table: measured_by
+          unit: points
+          return_type: double
+          ontology_concepts:
+            - http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#MeasuredBy
+            - http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#Kpis
+
+  - name: score_source_authority
+    description: >-
+      Beacon scoring signal 'source_authority' as weighted points: how
+      authoritative the person reporting the fact is, by role. QA & Regulatory
+      and Clinical Operations Director score highest (1.0), Supply Chain Lead
+      medium (0.6), others low (0.3), times the signal weight 10. Deterministic.
+    expression:
+      dialects:
+        - dialect: ANSI_SQL
+          expression: >-
+            SELECT (CASE
+              WHEN role LIKE '%Regulatory%' OR role LIKE '%Director%' THEN 1.0
+              WHEN role LIKE '%Lead%' THEN 0.6
+              ELSE 0.3
+            END) * 10 AS source_authority_points
+            FROM persons
+            WHERE person_id = {person_id}
+    ai_context:
+      synonyms:
+        - source authority points
+        - reporter authority score
+        - role authority score
+      instructions: >-
+        Beacon scoring signal. Returns weighted points (0-10) for how
+        authoritative the reporting person's role is. Pass the reporter's id as
+        person_id. Role mapping is by title substring (Regulatory/Director high,
+        Lead medium, otherwise low).
+    custom_extensions:
+      - vendor_name: COA
+        data:
+          data_source_id: 02436d7d-803e-4acb-a140-50ea45367069
+          source_table: persons
+          unit: points
+          return_type: double
+          ontology_concepts:
+            - http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#Persons
+
+  - name: score_urgency
+    description: >-
+      Beacon scoring signal 'urgency' as weighted points: how soon the nearest
+      upcoming event tied to this material falls due. Within 7 days scores 1.0,
+      then decays linearly to 0 at 60 days out; no upcoming event scores 0.
+      Times the signal weight 15. Deterministic (relative to CURRENT_DATE).
+    expression:
+      dialects:
+        - dialect: ANSI_SQL
+          expression: >-
+            SELECT COALESCE(MAX(
+              GREATEST(0.0, LEAST(1.0,
+                (60.0 - GREATEST(0.0, date_diff('day', CURRENT_DATE, CAST(date AS date)))) / 53.0
+              ))
+            ), 0.0) * 15 AS urgency_points
+            FROM events
+            WHERE material_id = {material_id}
+              AND CAST(date AS date) >= CURRENT_DATE
+    ai_context:
+      synonyms:
+        - urgency points
+        - time pressure score
+        - event imminence score
+      instructions: >-
+        Beacon scoring signal. Returns weighted points (0-15) for how imminent the
+        nearest upcoming event for this material is (<=7 days = full, 0 at >=60
+        days). Pass the material id as material_id.
+    custom_extensions:
+      - vendor_name: COA
+        data:
+          data_source_id: 02436d7d-803e-4acb-a140-50ea45367069
+          source_table: events
+          unit: points
+          return_type: double
+          ontology_concepts:
+            - http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#Events
+
+  - name: score_affected
+    description: >-
+      Beacon scoring signal 'affected' as weighted points: the downstream patient
+      population impacted when this material is disrupted. Impact propagates
+      CAUSALLY through kpi_drives: the material's KPI drives other KPIs; the
+      CLINICAL ones among those are measured on trials/sites, whose enrolled
+      patients are the affected population. Normalised by a 500-patient reference
+      ceiling, clamped to [0,1], times the signal weight 20. Deterministic.
+    expression:
+      dialects:
+        - dialect: ANSI_SQL
+          expression: >-
+            WITH seed_kpi AS (
+              SELECT DISTINCT kpi_id FROM measured_by WHERE material_id = {material_id}
+            ),
+            driven AS (
+              SELECT d1.to_kpi_id AS kpi_id FROM kpi_drives d1 JOIN seed_kpi s ON d1.from_kpi_id = s.kpi_id
+              UNION
+              SELECT d2.to_kpi_id FROM kpi_drives d2 JOIN kpi_drives d1 ON d2.from_kpi_id = d1.to_kpi_id JOIN seed_kpi s ON d1.from_kpi_id = s.kpi_id
+              UNION
+              SELECT d3.to_kpi_id FROM kpi_drives d3 JOIN kpi_drives d2 ON d3.from_kpi_id = d2.to_kpi_id JOIN kpi_drives d1 ON d2.from_kpi_id = d1.to_kpi_id JOIN seed_kpi s ON d1.from_kpi_id = s.kpi_id
+            ),
+            clinical_kpi AS (
+              SELECT DISTINCT dk.kpi_id FROM driven dk JOIN kpis k ON k.kpi_id = dk.kpi_id WHERE k.clinical = 'true'
+            ),
+            impacted_sites AS (
+              SELECT DISTINCT ts.site_id, ts.enrolled
+              FROM clinical_kpi ck
+              JOIN measured_by mb ON mb.kpi_id = ck.kpi_id
+              JOIN trial_sites ts ON ts.trial_id = mb.trial_id OR ts.site_id = mb.site_id
+            )
+            SELECT LEAST(1.0, GREATEST(0.0,
+              COALESCE(SUM(CAST(enrolled AS double)), 0.0) / 500.0
+            )) * 20 AS affected_points
+            FROM impacted_sites
+    ai_context:
+      synonyms:
+        - affected points
+        - blast radius score
+        - downstream population score
+        - affected population score
+      instructions: >-
+        Beacon scoring signal. Returns weighted points (0-20) for the downstream
+        patient population affected if this material is disrupted, reached via the
+        causal kpi_drives chain to clinical KPIs and their trial sites. Pass the
+        material id as material_id.
+    custom_extensions:
+      - vendor_name: COA
+        data:
+          data_source_id: 02436d7d-803e-4acb-a140-50ea45367069
+          source_table: measured_by
+          unit: points
+          return_type: double
+          ontology_concepts:
+            - http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#MeasuredBy
+            - http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#KpiDrives
+            - http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#Kpis
+            - http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#TrialSites
