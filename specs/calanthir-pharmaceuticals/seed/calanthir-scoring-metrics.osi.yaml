@@ -1,0 +1,47 @@
+# OSI v1.0 — Beacon scoring signal as a GOVERNED, DETERMINISTIC metric.
+#
+# breaks_expected: how far the material's current lead time exceeds its baseline,
+# normalised to [0,1] and multiplied by the signal WEIGHT (25) so the metric
+# returns WEIGHTED POINTS directly. Beacon SUMS these per-signal metrics instead
+# of computing the formula in Python (design §11 / §13: scores are deterministic
+# COA metrics, never LLM structured output).
+#
+# dialect ANSI_SQL (Athena/Trino); dimension {material_id}. Import on the
+# calanthir-pharma namespace, then Beacon reads it via list_metrics + a
+# dimension-bound query at Tier-1 (confidence 1.0).
+osi_spec_version: "1.0"
+
+metrics:
+  - name: score_breaks_expected
+    description: >-
+      Beacon scoring signal 'breaks_expected' as weighted points: the fraction by
+      which a material's current lead_time_days exceeds its baseline_lead_days,
+      clamped to [0,1], times the signal weight 25. Deterministic; Beacon sums
+      this with the other per-signal metrics to form the governance score.
+    expression:
+      dialects:
+        - dialect: ANSI_SQL
+          expression: >-
+            SELECT LEAST(1.0, GREATEST(0.0,
+              (CAST(lead_time_days AS double) - CAST(baseline_lead_days AS double))
+              / NULLIF(CAST(baseline_lead_days AS double), 0)
+            )) * 25 AS breaks_expected_points
+            FROM materials
+            WHERE material_id = {material_id}
+    ai_context:
+      synonyms:
+        - breaks expected points
+        - breaks expected score
+        - lead time deviation score
+      instructions: >-
+        Beacon scoring signal. Returns weighted points (0-25) for how far the
+        material's lead time exceeds baseline. Pass the material id as material_id.
+    custom_extensions:
+      - vendor_name: COA
+        data:
+          data_source_id: 02436d7d-803e-4acb-a140-50ea45367069
+          source_table: materials
+          unit: points
+          return_type: double
+          ontology_concepts:
+            - http://coa.amazon.com/namespace/f054a82f-37a1-4033-a385-b9bf4d286056/ontology/induced#Materials

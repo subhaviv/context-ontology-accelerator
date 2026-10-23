@@ -604,3 +604,45 @@ LLM for the fuzzy front-end; COA for every allowed value; a deterministic guard 
 boundary. That is the piece to keep investing in. Agnostic-by-construction: domain flavor
 is fetched (pharma/provider/payor = same engine, different data drop), never compiled.
 RULE: the resolver fetches domain knowledge from COA; it never hardcodes it.
+
+## 13. Scores are deterministic — never LLM structured output (2026-10-23)
+
+DECISION: a governance SCORE is produced only by deterministic computation — a
+COA metric (SQL) or, as an interim, Beacon Python — NEVER by asking the LLM to
+emit the number via structured output.
+
+Why, explicitly (this was considered and rejected): structured output is the
+right tool for the RESOLVER because it constrains the SHAPE and a deterministic
+closed-set GUARD validates every value against COA — the model proposes an
+entity id, the graph disposes. A score has no such guard: any float in [0,1] is
+"valid shape", so an LLM-emitted score is unfenced. It would be
+non-deterministic (same fact scores differently run to run), unauditable (no
+formula to point at), and ungovernable (the CFO's dashboard number no longer
+equals the agent's). That is the exact property we spent the effort to AVOID —
+it is Tier-2's non-determinism taken to the extreme (the model does not even run
+SQL, it just asserts a number). So: LLM structured output governs the INPUTS
+(which entity, which dimension, reported magnitude — all guard-fenced); the
+score is computed from those inputs by a fixed formula.
+
+Ranking for a governance score: (1) COA metric summed [best — governed,
+deterministic, auditable]; (2) Beacon Python formula [honest interim —
+deterministic, reviewable, just not in the governed layer]; (3) LLM
+structured-JSON score [DISQUALIFIED — non-deterministic/unauditable].
+
+### Migration: COA-metrics-summed scoring (the §11 target, now in progress)
+Each scorable signal becomes one COA metric returning its WEIGHTED points for
+the anchor entity (weight baked into the SQL per §11); `score_fact` becomes a
+SUM over those metric results instead of a Python formula. Per-signal
+feasibility on today's surface:
+- breaks_expected (actual vs baseline deviation): METRIC — pure SQL over the
+  anchor's own columns, {entity} dimension. Proven path (supply_lead_time_variance).
+- kpi_tier: METRIC — SQL over the measured KPI's tier.
+- source_authority: METRIC — SQL over the reporter's role/authority.
+- urgency: METRIC (conditional) — needs a date/event column in SQL.
+- novelty: STAYS IN BEACON — stateful (compares against Beacon's own fact store,
+  which COA metrics cannot see). Flagged, not faked.
+- affected: STAYS IN BEACON for now — needs a multi-hop traversal
+  (entity -> KPI -> sites -> population) that the stateless NL query does not
+  walk (returns 0 rows); revisit with graph_traversal or a materialized metric.
+score_fact sums the metric-returned weighted points for the signals that are
+metrics and keeps the two exceptions as clearly-marked Beacon computations.
