@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>COA inside IDBS's AI Mapper — migration workflow (status-marked)</title>
+<style>
+  :root{
+    --bg:#0f1420; --text:#e6e9ef; --text-strong:#ffffff; --muted:#9aa3b2; --muted-strong:#c3cad6;
+    --card:#1a2130; --card-fg:#e6e9ef; --border:#2c3444; --border-strong:#3d485c;
+    --accent:#5b9dff; --accent-subtle:#16233d;
+    --ok:#3ecf8e; --ok-subtle:#123026;
+    --warn:#e0a438; --warn-subtle:#332814;
+    --danger:#e5484d; --danger-subtle:#331618;
+    --bg-elevated:#141b28;
+  }
+  @media (prefers-color-scheme: light){
+    :root{
+      --bg:#f6f7f9; --text:#1a1f29; --text-strong:#0b0e14; --muted:#5a6472; --muted-strong:#3a4250;
+      --card:#ffffff; --card-fg:#1a1f29; --border:#d8dde6; --border-strong:#b3bcc9;
+      --accent:#1f6feb; --accent-subtle:#e8f0ff;
+      --ok:#1a7f4b; --ok-subtle:#e4f6ec;
+      --warn:#9a6a11; --warn-subtle:#fbf0d8;
+      --danger:#b42318; --danger-subtle:#fbe6e5;
+      --bg-elevated:#eef1f5;
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;padding:24px;line-height:1.4}
+  .wrap{max-width:1000px;margin:0 auto}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.92em}
+  .h1{font-size:20px;font-weight:700;color:var(--text-strong);margin:0 0 4px}
+  .sub{font-size:12px;color:var(--muted);margin-bottom:18px}
+  .lbl{font-size:11px;font-weight:600;letter-spacing:.03em;color:var(--muted-strong);margin:0 0 8px}
+  .row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:4px}
+  .box{padding:9px 12px;border-radius:9px;font-size:12px;flex:1;min-width:150px;background:var(--card);color:var(--card-fg);border:1px solid var(--border)}
+  .box b{font-weight:600}
+  .box .m{color:var(--muted)}
+  .arrow{text-align:center;margin:8px 0;font-size:18px;color:var(--muted)}
+  .arrow.sm{font-size:16px;margin:4px 0}
+  .mapper{border-radius:12px;padding:12px;border:2px dashed var(--border-strong);background:var(--bg-elevated)}
+  .mapper-ttl{font-size:11px;font-weight:700;letter-spacing:.03em;color:var(--accent);margin-bottom:8px}
+  .coa{border-radius:10px;padding:12px;margin-bottom:8px;border:2px solid var(--accent);background:var(--accent-subtle)}
+  .coa-ttl{font-size:11px;font-weight:700;color:var(--accent);margin-bottom:8px}
+  .statuslbl{font-size:10px;font-weight:600;color:var(--muted-strong);margin:12px 0 4px}
+  .s-ok{background:var(--ok-subtle);border:1.5px solid var(--ok)}
+  .s-ok .t{color:var(--ok);font-weight:600}
+  .s-warn{background:var(--warn-subtle);border:1.5px solid var(--warn)}
+  .s-warn .t{color:var(--warn);font-weight:600}
+  .s-dang{background:var(--danger-subtle);border:1.5px dashed var(--danger)}
+  .s-dang .t{color:var(--danger);font-weight:600}
+  .note{font-size:10px;margin-top:6px;color:var(--muted)}
+  .xform{border-radius:10px;padding:12px;border:2px solid var(--warn);background:var(--warn-subtle)}
+  .xform-ttl{font-size:11px;font-weight:700;color:var(--warn);margin-bottom:8px}
+  .out{padding:9px 12px;border-radius:9px;font-size:12px;background:var(--ok-subtle);color:var(--card-fg);border:1px solid var(--ok)}
+  .out b{color:var(--ok)}
+  .legend{margin-top:18px;padding-top:12px;border-top:1px solid var(--border);display:flex;flex-wrap:wrap;gap:14px;font-size:10px;color:var(--muted)}
+  .sw{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:3px;vertical-align:middle}
+  .foot{margin-top:16px;font-size:10px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="h1">COA inside IDBS's AI Mapper — migration workflow</div>
+  <div class="sub">Stage ② distinguishes what COA emits today, what is computed-but-dropped, and what is unproven on a real grounded run. "Component" = COA is the mapping core inside the Mapper; the transform/validate/approve layer is downstream, IDBS-owned.</div>
+
+  <div class="lbl">① INPUTS (customer + IDBS supply)</div>
+  <div class="row">
+    <div class="box"><b>Messy source data</b><br><span class="m">customer tables / instrument exports (AnIML → CSVs)</span></div>
+    <div class="box"><b>Target ontology / schema</b><br><span class="m">IDBS's model to migrate INTO (AnIML/AFO OWL)</span></div>
+    <div class="box"><b>Business glossary</b><br><span class="m">synonyms / definitions (Collibra, steward)</span></div>
+  </div>
+
+  <div class="arrow">↓</div>
+
+  <div class="mapper">
+    <div class="mapper-ttl">IDBS "AI MAPPER" (the whole component the customer keeps)</div>
+
+    <div class="coa">
+      <div class="coa-ttl">② COA — the mapping brain (ingest → induce → ground)</div>
+      <div class="row" style="margin-bottom:10px">
+        <div class="box"><b>Ingest</b><br><span class="m">profile tables+columns, embed; upload+embed target</span></div>
+        <div class="box"><b>Induce + Ground</b><br><span class="m">match source→target, rerank, classify</span></div>
+      </div>
+
+      <div class="statuslbl">Mapping output — field by field status:</div>
+      <div class="row">
+        <div class="box s-ok">
+          <span class="t">✅ EXISTS (emitted)</span><br>
+          <code>matched_class_uri</code> — field→concept<br>
+          <code>similarity</code> — confidence<br>
+          <code>match_type</code> — exact/high/novel
+        </div>
+        <div class="box s-warn">
+          <span class="t">⚠️ COMPUTED but DROPPED</span><br>
+          <code>relationship</code> — equivalence (skos:exactMatch)<br>
+          <code>reason</code> — rationale
+          <div class="note">computed in grounding.py:620, dropped at pipeline.py:475 → the <b>1a wiring fix</b></div>
+        </div>
+        <div class="box s-dang">
+          <span class="t">❓ UNPROVEN on live grounding</span><br>
+          only run so far was all-<i>novel</i> (empty candidate pool)
+          <div class="note">the AnIML run is the first real test — proves ✅ fires + checks whether ⚠️ persists</div>
+        </div>
+      </div>
+      <div class="note">COA automates the expensive, SME-heavy semantic matching. ← the "component" — but today's output is <b>partial</b> and <b>not yet observed grounded</b>.</div>
+    </div>
+
+    <div class="arrow sm">↓ COA hands the mapping down</div>
+
+    <div class="xform">
+      <div class="xform-ttl">③ Transform / Validate / Lookup — DOWNSTREAM of COA (NOT COA, IDBS-owned)</div>
+      <div class="row">
+        <div class="box"><b>Transform engine</b><br><span class="m">CONVERT_UNIT (2400 mg/L→2.4 mg/mL), PARSE_DATE — UCUM math</span></div>
+        <div class="box"><b>External lookups</b><br><span class="m">Clone_Name→Sample_ID inventory API</span></div>
+        <div class="box"><b>Validation rules</b><br><span class="m">ranges, permitted values, trap-row flags</span></div>
+      </div>
+      <div class="note">Never existed in COA. Derivable from COA's output in your eval harness — no COA field needed.</div>
+    </div>
+
+    <div class="arrow sm">↓</div>
+
+    <div class="box"><b>④ Human review &amp; approve (IDBS UI)</b><br><span class="m">SME reviews high/ambiguous matches → approves. Approved mappings feed back as glossary vocabulary.</span></div>
+  </div>
+
+  <div class="arrow">↓</div>
+
+  <div class="out"><b>⑤ Migrated data</b> — target schema, transformed, validated, audit-trailed</div>
+
+  <div class="legend">
+    <span><span class="sw" style="background:var(--ok)"></span>exists today</span>
+    <span><span class="sw" style="background:var(--warn)"></span>computed but dropped (1a fix) / IDBS-owned layer</span>
+    <span><span class="sw" style="background:var(--danger)"></span>unproven on a live grounded run (AnIML run proves it)</span>
+    <span><span class="sw" style="background:var(--accent)"></span>COA boundary</span>
+  </div>
+
+  <div class="foot">Danaher / IDBS source-to-target migration eval · COA engineering sync · generated 2026-10-26. Field refs (grounding.py:620, pipeline.py:475) from a repo read — confirm against HEAD.</div>
+</div>
+</body>
+</html>

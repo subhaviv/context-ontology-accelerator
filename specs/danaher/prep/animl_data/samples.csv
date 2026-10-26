@@ -1,0 +1,43 @@
+sample_id,name,comment,Owner,Mixer ID,Status,Appearance,Initial pH,Final pH,Limscode,Electrodenumber,Created by,Created,Group,Total Amount Made,Batch Type,Expiry,Manufactured,Start Weight,Beaker + Stirrer + Formulation,End Weight,Amount Lost,Amount Added,Type,Lot Number,Ingredient ID,Link,FluidDensity,_source_file
+Matcha-00001,Matcha,,,R04,,,,,,,,,,,,,,,,,,,,,,,,Example1.animl
+Basil-00002,Basil,This is an ingredient,,R04,,,,,,,,,,,,,,,,,,,,,,,,Example1.animl
+Oregano-00003,Oregano,This is an ingredient,,R04,,,,,,,,,,,,,,,,,,,,,,,,Example1.animl
+Pepper-00004,Pepper,This is an ingredient,,R04,,,,,,,,,,,,,,,,,,,,,,,,Example1.animl
+Matcha-00001,Matcha,,,,,,,,,,,,,,,,,,,,,,,,,,,Example10.animl
+Matcha-00001,Matcha,,,R02,,N_A,,,,,,,,,,,,,,,,,,,,,,Example2.animl
+Basil-00002,Basil,This is an ingredient,,R02,,,,,,,,,,,,,,,,,,,,,,,,Example2.animl
+Oregano-00003,Oregano,This is an ingredient,,R02,,,,,,,,,,,,,,,,,,,,,,,,Example2.animl
+Pepper-00004,Pepper,This is an ingredient,,R02,,,,,,,,,,,,,,,,,,,,,,,,Example2.animl
+Cinnamon-00005,Cinnamon,This is an ingredient,,R02,,,,,,,,,,,,,,,,,,,,,,,,Example2.animl
+Ginger-00006,Ginger,This is an ingredient,,R02,,,,,,,,,,,,,,,,,,,,,,,,Example2.animl
+Matcha-00001,Matcha,,,,,,,,,,,,,,,,,,,,,,,,,,,Example3.animl
+Matcha-00001,Matcha,,,,,,,,Matcha,1,,,,,,,,,,,,,,,,,,Example4.animl
+Matcha-00001,Matcha,DEFT DOE EU Blue 4% Comete 0% 555 36deg,Danny.McMahon,,Released,,,,,,Sophia.Sarfraz,,,3500.0,formulation,,,,,,,,,,,,,Example5.animl
+Basil-00002,Basil,,,,,,,,,,,,,,,,,,,,,,Lot,I-220513-00015,Ingr-000000000007,,,Example5.animl
+Oregano-00003,Oregano,,,,,,,,,,,,,,,,,,,,,,Lot,I-250826-00145,Ingr-000000092512,,,Example5.animl
+Pepper-00004,Pepper,,,,,,,,,,,,,,,,,,,,,,Lot,I-250910-00035,Ingr-000000111323,,,Example5.animl
+Cinnamon-00005,Cinnamon,,,,,,,,,,,,,,,,,,,,,,Lot,I-250819-00040,Ingr-000000001746,,,Example5.animl
+Ginger-00006,Ginger,,,,,,,,,,,,,,,,,,,,,,Lot,I-241205-00087,Ingr-000000000071,,,Example5.animl
+Turmeric-00007,Turmeric,,,,,,,,,,,,,,,,,,,,,,Lot,M-250723-00018,Mixt-000000134021,,,Example5.animl
+Vanilla-00008,Vanilla,,,,,,,,,,,,,,,,,,,,,,Lot,I-231204-00124,Ingr-000000099047,,,Example5.animl
+Rosemary-00009,Rosemary,,,,,,,,,,,,,,,,,,,,,,Lot,M-240726-00030,Mixt-000000097526,,,Example5.animl
+Thyme-00010,Thyme,,,,,,,,,,,,,,,,,,,,,,Lot,M-250725-00037,Mixt-000000237994,,,Example5.animl
+Coffee-00011,Coffee,,,,,,,,,,,,,,,,,,,,,,Lot,M-250725-00036,Mixt-000000237992,,,Example5.animl
+Tea-00012,Tea,,,,,,,,,,,,,,,,,,,,,,Lot,I-250128-00079,Ingr-000000012786,,,Example5.animl
+Cocoa-00013,Cocoa,,,,,,,,,,,,,,,,,,,,,,Lot,I-250606-00060,Ingr-000000124462,,,Example5.animl
+Matcha-00001,Matcha,DEFT DOE EU Blue 4% Comete 0% 555 36deg,Danny.McMahon,,Released,,,,,,Sophia.Sarfraz,,,3500.0,formulation,,,,,,,,,,,,,Example6.animl
+Basil-00002,Basil,,,,,,,,,,,,,,,,,,,,,,Lot,I-220513-00015,Ingr-000000000007,,,Example6.animl
+Oregano-00003,Oregano,,,,,,,,,,,,,,,,,,,,,,Lot,I-250826-00145,Ingr-000000092512,,,Example6.animl
+Pepper-00004,Pepper,,,,,,,,,,,,,,,,,,,,,,Lot,I-250910-00035,Ingr-000000111323,,,Example6.animl
+Cinnamon-00005,Cinnamon,,,,,,,,,,,,,,,,,,,,,,Lot,I-250819-00040,Ingr-000000001746,,,Example6.animl
+Ginger-00006,Ginger,,,,,,,,,,,,,,,,,,,,,,Lot,I-241205-00087,Ingr-000000000071,,,Example6.animl
+Turmeric-00007,Turmeric,,,,,,,,,,,,,,,,,,,,,,Lot,M-250723-00018,Mixt-000000134021,,,Example6.animl
+Vanilla-00008,Vanilla,,,,,,,,,,,,,,,,,,,,,,Lot,I-231204-00124,Ingr-000000099047,,,Example6.animl
+Rosemary-00009,Rosemary,,,,,,,,,,,,,,,,,,,,,,Lot,M-240726-00030,Mixt-000000097526,,,Example6.animl
+Thyme-00010,Thyme,,,,,,,,,,,,,,,,,,,,,,Lot,M-250725-00037,Mixt-000000237994,,,Example6.animl
+Coffee-00011,Coffee,,,,,,,,,,,,,,,,,,,,,,Lot,M-250725-00036,Mixt-000000237992,,,Example6.animl
+Tea-00012,Tea,,,,,,,,,,,,,,,,,,,,,,Lot,I-250128-00079,Ingr-000000012786,,,Example6.animl
+Cocoa-00013,Cocoa,,,,,,,,,,,,,,,,,,,,,,Lot,I-250606-00060,Ingr-000000124462,,,Example6.animl
+Matcha-00001,Matcha,,,,,,,,,,,,,,,,,,,,,,,,,,1,Example7.animl
+Matcha-00001,Matcha,,,,,,,,,,,,,,,,,,,,,,,,,,,Example8.animl
+Matcha-00001,Matcha,,,,,,,,,,,,,,,,,,,,,,,,,,,Example9.animl

@@ -1,0 +1,305 @@
+experiment_step_id,result_name,category_name,parameter_name,parameter_type,value,unit,_source_file
+1,Step Results,Measured,Start Time,DateTime,,,Example1.animl
+1,Step Results,Measured,Actual Weight,Float64,3.395,g,Example1.animl
+1,Step Results,Measured,End Time,DateTime,,,Example1.animl
+1,Step Results,Measured,Dispense Time,Float64,254.17,s,Example1.animl
+1,Step Results,Measured,Equipment,String,GDU-HV,,Example1.animl
+2,Step Results,Measured,Start Time,DateTime,,,Example1.animl
+2,Step Results,Measured,Actual Weight,Float64,70.197,g,Example1.animl
+2,Step Results,Measured,End Time,DateTime,,,Example1.animl
+2,Step Results,Measured,Dispense Time,Float64,1543.47,s,Example1.animl
+2,Step Results,Measured,Equipment,String,GDU-HV,,Example1.animl
+3,Step Results,Measured,Start Time,DateTime,,,Example1.animl
+3,Step Results,Measured,Actual Weight,Float64,6.403,g,Example1.animl
+3,Step Results,Measured,End Time,DateTime,,,Example1.animl
+3,Step Results,Measured,Dispense Time,Float64,1815.39,s,Example1.animl
+3,Step Results,Measured,Equipment,String,GDU-P,,Example1.animl
+es-1,Particle Size,Particle Size Distribution,Stirrer Speed Achieved,Int32,2400,rpm,Example10.animl
+es-1,Particle Size,Particle Size Distribution,Description,String,Pea concentrate blank,,Example10.animl
+es-1,Particle Size,Particle Size Distribution,Laser Obscuration,Float32,7.25,%,Example10.animl
+es-1,Particle Size,Particle Size Distribution,SOP File Name,String,SOP hot dispersibility MvdB.msop,,Example10.animl
+es-1,Particle Size,Particle Size Distribution,Result Below (2) μm,Float32,0.0,µm,Example10.animl
+es-1,Particle Size,Particle Size Distribution,Residual,Float32,0.65,,Example10.animl
+es-1,Particle Size,Particle Size Distribution,Measurement Date Time,DateTime,,,Example10.animl
+es-1,Particle Size,Particle Size Distribution,Dx (10),Float32,7.75,µm,Example10.animl
+es-1,Particle Size,Particle Size Distribution,Span,Float32,5.09,,Example10.animl
+es-1,Particle Size,Particle Size Distribution,Dx (50),Float32,47.9,µm,Example10.animl
+es-1,Particle Size,Particle Size Distribution,Obscuration Blue,Float32,4.7,%,Example10.animl
+es-1,Particle Size,Particle Size Distribution,LIMS Mixture/Formulation Number,String,00001,,Example10.animl
+es-1,Particle Size,Particle Size Distribution,Weighted Residual,Float32,0.54,,Example10.animl
+es-1,Particle Size,Particle Size Distribution,Dx (90),Float32,252.0,µm,Example10.animl
+es-1,Particle Size,Particle Size Distribution,Stirrer Speed Demand,Int32,2400,rpm,Example10.animl
+es-1,Particle Size,Particle Size Distribution,Result Below (1) μm,Float32,0.0,µm,Example10.animl
+es-1,Particle Size,Particle Size Distribution,"D [4,3]",Float32,94.9,µm,Example10.animl
+es-1,Particle Size,Particle Size Distribution,"D [3,2]",Float32,21.8,µm,Example10.animl
+es-2,Particle Size,Particle Size Distribution,Stirrer Speed Achieved,Int32,2400,rpm,Example10.animl
+es-2,Particle Size,Particle Size Distribution,Description,String,Pea concentrate blank,,Example10.animl
+es-2,Particle Size,Particle Size Distribution,Laser Obscuration,Float32,7.37,%,Example10.animl
+es-2,Particle Size,Particle Size Distribution,SOP File Name,String,SOP hot dispersibility MvdB.msop,,Example10.animl
+es-2,Particle Size,Particle Size Distribution,Result Below (2) μm,Float32,0.0,µm,Example10.animl
+es-2,Particle Size,Particle Size Distribution,Residual,Float32,0.66,,Example10.animl
+es-2,Particle Size,Particle Size Distribution,Measurement Date Time,DateTime,,,Example10.animl
+es-2,Particle Size,Particle Size Distribution,Dx (10),Float32,7.66,µm,Example10.animl
+es-2,Particle Size,Particle Size Distribution,Span,Float32,5.205,,Example10.animl
+es-2,Particle Size,Particle Size Distribution,Dx (50),Float32,44.8,µm,Example10.animl
+es-2,Particle Size,Particle Size Distribution,Obscuration Blue,Float32,4.77,%,Example10.animl
+es-2,Particle Size,Particle Size Distribution,LIMS Mixture/Formulation Number,String,00001,,Example10.animl
+es-2,Particle Size,Particle Size Distribution,Weighted Residual,Float32,0.54,,Example10.animl
+es-2,Particle Size,Particle Size Distribution,Dx (90),Float32,241.0,µm,Example10.animl
+es-2,Particle Size,Particle Size Distribution,Stirrer Speed Demand,Int32,2400,rpm,Example10.animl
+es-2,Particle Size,Particle Size Distribution,Result Below (1) μm,Float32,0.0,µm,Example10.animl
+es-2,Particle Size,Particle Size Distribution,"D [4,3]",Float32,90.7,µm,Example10.animl
+es-2,Particle Size,Particle Size Distribution,"D [3,2]",Float32,21.4,µm,Example10.animl
+es-3,Particle Size,Particle Size Distribution,Stirrer Speed Achieved,Int32,2400,rpm,Example10.animl
+es-3,Particle Size,Particle Size Distribution,Description,String,Pea concentrate blank,,Example10.animl
+es-3,Particle Size,Particle Size Distribution,Laser Obscuration,Float32,7.44,%,Example10.animl
+es-3,Particle Size,Particle Size Distribution,SOP File Name,String,SOP hot dispersibility MvdB.msop,,Example10.animl
+es-3,Particle Size,Particle Size Distribution,Result Below (2) μm,Float32,0.0,µm,Example10.animl
+es-3,Particle Size,Particle Size Distribution,Residual,Float32,0.68,,Example10.animl
+es-3,Particle Size,Particle Size Distribution,Measurement Date Time,DateTime,,,Example10.animl
+es-3,Particle Size,Particle Size Distribution,Dx (10),Float32,7.56,µm,Example10.animl
+es-3,Particle Size,Particle Size Distribution,Span,Float32,5.354,,Example10.animl
+es-3,Particle Size,Particle Size Distribution,Dx (50),Float32,41.7,µm,Example10.animl
+es-3,Particle Size,Particle Size Distribution,Obscuration Blue,Float32,4.84,%,Example10.animl
+es-3,Particle Size,Particle Size Distribution,LIMS Mixture/Formulation Number,String,00001,,Example10.animl
+es-3,Particle Size,Particle Size Distribution,Weighted Residual,Float32,0.57,,Example10.animl
+es-3,Particle Size,Particle Size Distribution,Dx (90),Float32,231.0,µm,Example10.animl
+es-3,Particle Size,Particle Size Distribution,Stirrer Speed Demand,Int32,2400,rpm,Example10.animl
+es-3,Particle Size,Particle Size Distribution,Result Below (1) μm,Float32,0.0,µm,Example10.animl
+es-3,Particle Size,Particle Size Distribution,"D [4,3]",Float32,85.9,µm,Example10.animl
+es-3,Particle Size,Particle Size Distribution,"D [3,2]",Float32,20.8,µm,Example10.animl
+es-4,Particle Size,Particle Size Distribution,Stirrer Speed Achieved,Int32,2400,rpm,Example10.animl
+es-4,Particle Size,Particle Size Distribution,Description,String,Pea concentrate blank,,Example10.animl
+es-4,Particle Size,Particle Size Distribution,Laser Obscuration,Float32,9.34,%,Example10.animl
+es-4,Particle Size,Particle Size Distribution,SOP File Name,String,SOP hot dispersibility MvdB.msop,,Example10.animl
+es-4,Particle Size,Particle Size Distribution,Result Below (2) μm,Float32,0.0,µm,Example10.animl
+es-4,Particle Size,Particle Size Distribution,Residual,Float32,0.75,,Example10.animl
+es-4,Particle Size,Particle Size Distribution,Measurement Date Time,DateTime,,,Example10.animl
+es-4,Particle Size,Particle Size Distribution,Dx (10),Float32,6.89,µm,Example10.animl
+es-4,Particle Size,Particle Size Distribution,Span,Float32,5.651,,Example10.animl
+es-4,Particle Size,Particle Size Distribution,Dx (50),Float32,30.2,µm,Example10.animl
+es-4,Particle Size,Particle Size Distribution,Obscuration Blue,Float32,6.11,%,Example10.animl
+es-4,Particle Size,Particle Size Distribution,LIMS Mixture/Formulation Number,String,00001,,Example10.animl
+es-4,Particle Size,Particle Size Distribution,Weighted Residual,Float32,0.64,,Example10.animl
+es-4,Particle Size,Particle Size Distribution,Dx (90),Float32,178.0,µm,Example10.animl
+es-4,Particle Size,Particle Size Distribution,Stirrer Speed Demand,Int32,2400,rpm,Example10.animl
+es-4,Particle Size,Particle Size Distribution,Result Below (1) μm,Float32,0.0,µm,Example10.animl
+es-4,Particle Size,Particle Size Distribution,"D [4,3]",Float32,65.1,µm,Example10.animl
+es-4,Particle Size,Particle Size Distribution,"D [3,2]",Float32,17.9,µm,Example10.animl
+es-5,Particle Size,Particle Size Distribution,Stirrer Speed Achieved,Int32,2400,rpm,Example10.animl
+es-5,Particle Size,Particle Size Distribution,Description,String,Pea concentrate blank,,Example10.animl
+es-5,Particle Size,Particle Size Distribution,Laser Obscuration,Float32,9.36,%,Example10.animl
+es-5,Particle Size,Particle Size Distribution,SOP File Name,String,SOP hot dispersibility MvdB.msop,,Example10.animl
+es-5,Particle Size,Particle Size Distribution,Result Below (2) μm,Float32,0.0,µm,Example10.animl
+es-5,Particle Size,Particle Size Distribution,Residual,Float32,0.77,,Example10.animl
+es-5,Particle Size,Particle Size Distribution,Measurement Date Time,DateTime,,,Example10.animl
+es-5,Particle Size,Particle Size Distribution,Dx (10),Float32,6.81,µm,Example10.animl
+es-5,Particle Size,Particle Size Distribution,Span,Float32,5.598,,Example10.animl
+es-5,Particle Size,Particle Size Distribution,Dx (50),Float32,28.8,µm,Example10.animl
+es-5,Particle Size,Particle Size Distribution,Obscuration Blue,Float32,6.15,%,Example10.animl
+es-5,Particle Size,Particle Size Distribution,LIMS Mixture/Formulation Number,String,00001,,Example10.animl
+es-5,Particle Size,Particle Size Distribution,Weighted Residual,Float32,0.65,,Example10.animl
+es-5,Particle Size,Particle Size Distribution,Dx (90),Float32,168.0,µm,Example10.animl
+es-5,Particle Size,Particle Size Distribution,Stirrer Speed Demand,Int32,2400,rpm,Example10.animl
+es-5,Particle Size,Particle Size Distribution,Result Below (1) μm,Float32,0.0,µm,Example10.animl
+es-5,Particle Size,Particle Size Distribution,"D [4,3]",Float32,61.6,µm,Example10.animl
+es-5,Particle Size,Particle Size Distribution,"D [3,2]",Float32,17.5,µm,Example10.animl
+es-6,Particle Size,Particle Size Distribution,Stirrer Speed Achieved,Int32,2400,rpm,Example10.animl
+es-6,Particle Size,Particle Size Distribution,Description,String,Pea concentrate blank,,Example10.animl
+es-6,Particle Size,Particle Size Distribution,Laser Obscuration,Float32,9.42,%,Example10.animl
+es-6,Particle Size,Particle Size Distribution,SOP File Name,String,SOP hot dispersibility MvdB.msop,,Example10.animl
+es-6,Particle Size,Particle Size Distribution,Result Below (2) μm,Float32,0.0,µm,Example10.animl
+es-6,Particle Size,Particle Size Distribution,Residual,Float32,0.76,,Example10.animl
+es-6,Particle Size,Particle Size Distribution,Measurement Date Time,DateTime,,,Example10.animl
+es-6,Particle Size,Particle Size Distribution,Dx (10),Float32,6.8,µm,Example10.animl
+es-6,Particle Size,Particle Size Distribution,Span,Float32,5.602,,Example10.animl
+es-6,Particle Size,Particle Size Distribution,Dx (50),Float32,28.8,µm,Example10.animl
+es-6,Particle Size,Particle Size Distribution,Obscuration Blue,Float32,6.18,%,Example10.animl
+es-6,Particle Size,Particle Size Distribution,LIMS Mixture/Formulation Number,String,00001,,Example10.animl
+es-6,Particle Size,Particle Size Distribution,Weighted Residual,Float32,0.63,,Example10.animl
+es-6,Particle Size,Particle Size Distribution,Dx (90),Float32,168.0,µm,Example10.animl
+es-6,Particle Size,Particle Size Distribution,Stirrer Speed Demand,Int32,2400,rpm,Example10.animl
+es-6,Particle Size,Particle Size Distribution,Result Below (1) μm,Float32,0.0,µm,Example10.animl
+es-6,Particle Size,Particle Size Distribution,"D [4,3]",Float32,61.9,µm,Example10.animl
+es-6,Particle Size,Particle Size Distribution,"D [3,2]",Float32,17.4,µm,Example10.animl
+es-7,Calculated Particle Size,Calculated Particle Size Distribution,Stirrer Speed Achieved,Int32,2400,rpm,Example10.animl
+es-7,Calculated Particle Size,Calculated Particle Size Distribution,Description,String,Pea concentrate blank,,Example10.animl
+es-7,Calculated Particle Size,Calculated Particle Size Distribution,Laser Obscuration,Float32,9.37,%,Example10.animl
+es-7,Calculated Particle Size,Calculated Particle Size Distribution,SOP File Name,String,SOP hot dispersibility MvdB.msop,,Example10.animl
+es-7,Calculated Particle Size,Calculated Particle Size Distribution,Result Below (2) μm,Float32,0.0,µm,Example10.animl
+es-7,Calculated Particle Size,Calculated Particle Size Distribution,Residual,Float32,0.76,,Example10.animl
+es-7,Calculated Particle Size,Calculated Particle Size Distribution,Measurement Date Time,DateTime,,,Example10.animl
+es-7,Calculated Particle Size,Calculated Particle Size Distribution,Dx (10),Float32,6.83,µm,Example10.animl
+es-7,Calculated Particle Size,Calculated Particle Size Distribution,Span,Float32,5.624,,Example10.animl
+es-7,Calculated Particle Size,Calculated Particle Size Distribution,Dx (50),Float32,29.3,µm,Example10.animl
+es-7,Calculated Particle Size,Calculated Particle Size Distribution,Obscuration Blue,Float32,6.15,%,Example10.animl
+es-7,Calculated Particle Size,Calculated Particle Size Distribution,LIMS Mixture/Formulation Number,String,00001,,Example10.animl
+es-7,Calculated Particle Size,Calculated Particle Size Distribution,Weighted Residual,Float32,0.64,,Example10.animl
+es-7,Calculated Particle Size,Calculated Particle Size Distribution,Dx (90),Float32,171.0,µm,Example10.animl
+es-7,Calculated Particle Size,Calculated Particle Size Distribution,Stirrer Speed Demand,Int32,2400,rpm,Example10.animl
+es-7,Calculated Particle Size,Calculated Particle Size Distribution,Result Below (1) μm,Float32,0.0,µm,Example10.animl
+es-7,Calculated Particle Size,Calculated Particle Size Distribution,"D [4,3]",Float32,62.9,µm,Example10.animl
+es-7,Calculated Particle Size,Calculated Particle Size Distribution,"D [3,2]",Float32,17.6,µm,Example10.animl
+1,Step Results,Measured,Start Time,DateTime,,,Example2.animl
+1,Step Results,Measured,Actual Weight,Float64,4.011,g,Example2.animl
+1,Step Results,Measured,End Time,DateTime,,,Example2.animl
+1,Step Results,Measured,Dispense Time,Float64,166.77,s,Example2.animl
+1,Step Results,Measured,Equipment,String,GDU-HV,,Example2.animl
+2,Step Results,Measured,Start Time,DateTime,,,Example2.animl
+2,Step Results,Measured,Actual Weight,Float64,4.014,g,Example2.animl
+2,Step Results,Measured,End Time,DateTime,,,Example2.animl
+2,Step Results,Measured,Dispense Time,Float64,244.48,s,Example2.animl
+2,Step Results,Measured,Equipment,String,GDU-HV,,Example2.animl
+3,Step Results,Measured,Start Time,DateTime,,,Example2.animl
+3,Step Results,Measured,Actual Weight,Float64,2.324,g,Example2.animl
+3,Step Results,Measured,End Time,DateTime,,,Example2.animl
+3,Step Results,Measured,Dispense Time,Float64,434.38,s,Example2.animl
+3,Step Results,Measured,Equipment,String,Manual,,Example2.animl
+4,Step Results,Measured,Start Time,DateTime,,,Example2.animl
+4,Step Results,Measured,Actual Weight,Float64,2.306,g,Example2.animl
+4,Step Results,Measured,End Time,DateTime,,,Example2.animl
+4,Step Results,Measured,Dispense Time,Float64,281.03,s,Example2.animl
+4,Step Results,Measured,Equipment,String,Manual,,Example2.animl
+5,Step Results,Measured,Start Time,DateTime,,,Example2.animl
+5,Step Results,Measured,Actual Weight,Float64,2.321,g,Example2.animl
+5,Step Results,Measured,End Time,DateTime,,,Example2.animl
+5,Step Results,Measured,Dispense Time,Float64,250.44,s,Example2.animl
+5,Step Results,Measured,Equipment,String,Manual,,Example2.animl
+6,Step Results,Measured,Start Time,DateTime,,,Example2.animl
+6,Step Results,Measured,Actual Weight,Float64,2.324,g,Example2.animl
+6,Step Results,Measured,End Time,DateTime,,,Example2.animl
+6,Step Results,Measured,Dispense Time,Float64,243.86,s,Example2.animl
+6,Step Results,Measured,Equipment,String,Manual,,Example2.animl
+7,Step Results,Measured,Start Time,DateTime,,,Example2.animl
+7,Step Results,Measured,Actual Weight,Float64,38.43,g,Example2.animl
+7,Step Results,Measured,End Time,DateTime,,,Example2.animl
+7,Step Results,Measured,Dispense Time,Float64,670.8,s,Example2.animl
+7,Step Results,Measured,Equipment,String,GDU-HV,,Example2.animl
+8,Step Results,Measured,Start Time,DateTime,,,Example2.animl
+8,Step Results,Measured,Actual Weight,Float64,20.023,g,Example2.animl
+8,Step Results,Measured,End Time,DateTime,,,Example2.animl
+8,Step Results,Measured,Dispense Time,Float64,372.47,s,Example2.animl
+8,Step Results,Measured,Equipment,String,GDU-HV,,Example2.animl
+es-1,D33 Water (LO / Duplex emulsions),D33 Water (LO / Duplex emulsions),ESigma,Float64,1.58,,Example3.animl
+es-1,D33 Water (LO / Duplex emulsions),D33 Water (LO / Duplex emulsions),LDelta,Float64,210.0,ms,Example3.animl
+es-1,D33 Water (LO / Duplex emulsions),D33 Water (LO / Duplex emulsions),D33,Float64,3.31,µm,Example3.animl
+es-1,D33 Water (LO / Duplex emulsions),D33 Water (LO / Duplex emulsions),D00,Float64,1.8,µm,Example3.animl
+es-1,D33 Water (LO / Duplex emulsions),D33 Water (LO / Duplex emulsions),2_5%,Float64,1.4,%,Example3.animl
+es-1,D33 Water (LO / Duplex emulsions),D33 Water (LO / Duplex emulsions),Sigma,Float64,0.46,,Example3.animl
+es-1,D33 Water (LO / Duplex emulsions),D33 Water (LO / Duplex emulsions),D33 Error,Float64,0.06,,Example3.animl
+es-1,D33 Water (LO / Duplex emulsions),D33 Water (LO / Duplex emulsions),Sigma Error,Float64,0.05,,Example3.animl
+es-1,D33 Water (LO / Duplex emulsions),D33 Water (LO / Duplex emulsions),50_0%,Float64,3.3,%,Example3.animl
+es-1,D33 Water (LO / Duplex emulsions),D33 Water (LO / Duplex emulsions),97_5%,Float64,8.1,%,Example3.animl
+es-2,External/Free Water Duplex,External/Free Water Duplex,Outer Water Error%,Float64,0.8,%,Example3.animl
+es-2,External/Free Water Duplex,External/Free Water Duplex,LDelta,Float64,210.0,ms,Example3.animl
+es-2,External/Free Water Duplex,External/Free Water Duplex,SDelta,Float64,1.5,ms,Example3.animl
+es-2,External/Free Water Duplex,External/Free Water Duplex,Error,Float64,3.47E-12,,Example3.animl
+es-2,External/Free Water Duplex,External/Free Water Duplex,Diffusion Constant,Float64,3.6682E-10,m²/s,Example3.animl
+es-2,External/Free Water Duplex,External/Free Water Duplex,Outer Water%,Float64,86.7,%,Example3.animl
+e-1,Single Results,RS01,Name,String,NaCl,,Example4.animl
+e-1,Single Results,RS01,Value,Float64,0.81,%,Example4.animl
+e-1,Single Results,RS01,Formula,String,"= ( 'DET U.EP{1}.VOL' * 'DET U.CONC' * 58,5 / 'MV.Sample size' ) * 0,1",,Example4.animl
+e-1,Single Results,RS02,Name,String,Verbruik,,Example4.animl
+e-1,Single Results,RS02,Value,Float64,3.4227,mL,Example4.animl
+e-1,Single Results,RS02,Formula,String,= 'DET U.EP{1}.VOL',,Example4.animl
+e-1,Single Results,RS03,Name,String,Sample Weight,,Example4.animl
+e-1,Single Results,RS03,Value,Float64,2.461,g,Example4.animl
+e-1,Single Results,RS03,Formula,String,= 'MV.Sample size',,Example4.animl
+BS-372908,Step Results,Measured,Start Time,DateTime,,,Example5.animl
+BS-372908,Step Results,Measured,End Time,DateTime,,,Example5.animl
+BS-372908,Step Results,Measured,Actual Amount,Float64,3089.23,g,Example5.animl
+BS-372907,Step Results,Measured,Start Time,DateTime,,,Example5.animl
+BS-372907,Step Results,Measured,End Time,DateTime,,,Example5.animl
+BS-372907,Step Results,Measured,Actual Speed,Float64,,rpm,Example5.animl
+BS-372909,Step Results,Measured,Start Time,DateTime,,,Example5.animl
+BS-372909,Step Results,Measured,End Time,DateTime,,,Example5.animl
+BS-372909,Step Results,Measured,Actual Amount,Float64,36,g,Example5.animl
+BS-372906,Step Results,Measured,Start Time,DateTime,,,Example5.animl
+BS-372906,Step Results,Measured,End Time,DateTime,,,Example5.animl
+BS-372906,Step Results,Measured,Actual Temperature,Float64,,°C,Example5.animl
+BS-372910,Step Results,Measured,Start Time,DateTime,,,Example5.animl
+BS-372910,Step Results,Measured,End Time,DateTime,,,Example5.animl
+BS-372910,Step Results,Measured,Actual Amount,Float64,14.72,g,Example5.animl
+BS-372911,Step Results,Measured,Start Time,DateTime,,,Example5.animl
+BS-372911,Step Results,Measured,End Time,DateTime,,,Example5.animl
+BS-372911,Step Results,Measured,Actual Amount,Float64,1.76,g,Example5.animl
+BS-372912,Step Results,Measured,Start Time,DateTime,,,Example5.animl
+BS-372912,Step Results,Measured,End Time,DateTime,,,Example5.animl
+BS-372912,Step Results,Measured,Actual Amount,Float64,0.29,g,Example5.animl
+BS-372913,Step Results,Measured,Start Time,DateTime,,,Example5.animl
+BS-372913,Step Results,Measured,End Time,DateTime,,,Example5.animl
+BS-372913,Step Results,Measured,Actual Amount,Float64,42.22,g,Example5.animl
+BS-372914,Step Results,Measured,Start Time,DateTime,,,Example5.animl
+BS-372914,Step Results,Measured,End Time,DateTime,,,Example5.animl
+BS-372914,Step Results,Measured,Actual Amount,Float64,155.54,g,Example5.animl
+BS-372915,Step Results,Measured,Start Time,DateTime,,,Example5.animl
+BS-372915,Step Results,Measured,End Time,DateTime,,,Example5.animl
+BS-372915,Step Results,Measured,Actual Amount,Float64,0.92,g,Example5.animl
+BS-372916,Step Results,Measured,Start Time,DateTime,,,Example5.animl
+BS-372916,Step Results,Measured,End Time,DateTime,,,Example5.animl
+BS-372916,Step Results,Measured,Actual Amount,Float64,9.07,g,Example5.animl
+BS-372917,Step Results,Measured,Start Time,DateTime,,,Example5.animl
+BS-372917,Step Results,Measured,End Time,DateTime,,,Example5.animl
+BS-372917,Step Results,Measured,Actual Amount,Float64,2.42,g,Example5.animl
+BS-372918,Step Results,Measured,Start Time,DateTime,,,Example5.animl
+BS-372918,Step Results,Measured,End Time,DateTime,,,Example5.animl
+BS-372918,Step Results,Measured,Actual Amount,Float64,312.67,g,Example5.animl
+BS-372919,Step Results,Measured,Start Time,DateTime,,,Example5.animl
+BS-372919,Step Results,Measured,End Time,DateTime,,,Example5.animl
+BS-372919,Step Results,Measured,Actual Amount,Float64,31.72,g,Example5.animl
+BS-372904,Step Results,Measured,Start Time,DateTime,,,Example5.animl
+BS-372904,Step Results,Measured,End Time,DateTime,,,Example5.animl
+BS-372905,Step Results,Measured,Start Time,DateTime,,,Example5.animl
+BS-372905,Step Results,Measured,End Time,DateTime,,,Example5.animl
+BS-372905,Step Results,Measured,Actual Temperature,Float64,,°C,Example5.animl
+BS-372860,Step Results,Measured,Start Time,DateTime,,,Example6.animl
+BS-372860,Step Results,Measured,End Time,DateTime,,,Example6.animl
+BS-372860,Step Results,Measured,Actual Amount,Float64,3105.2,g,Example6.animl
+BS-372859,Step Results,Measured,Start Time,DateTime,,,Example6.animl
+BS-372859,Step Results,Measured,End Time,DateTime,,,Example6.animl
+BS-372859,Step Results,Measured,Actual Speed,Float64,,rpm,Example6.animl
+BS-372861,Step Results,Measured,Start Time,DateTime,,,Example6.animl
+BS-372861,Step Results,Measured,End Time,DateTime,,,Example6.animl
+BS-372861,Step Results,Measured,Actual Amount,Float64,35.24,g,Example6.animl
+BS-372858,Step Results,Measured,Start Time,DateTime,,,Example6.animl
+BS-372858,Step Results,Measured,End Time,DateTime,,,Example6.animl
+BS-372858,Step Results,Measured,Actual Temperature,Float64,,°C,Example6.animl
+BS-372862,Step Results,Measured,Start Time,DateTime,,,Example6.animl
+BS-372862,Step Results,Measured,End Time,DateTime,,,Example6.animl
+BS-372862,Step Results,Measured,Actual Amount,Float64,14.44,g,Example6.animl
+BS-372863,Step Results,Measured,Start Time,DateTime,,,Example6.animl
+BS-372863,Step Results,Measured,End Time,DateTime,,,Example6.animl
+BS-372863,Step Results,Measured,Actual Amount,Float64,1.74,g,Example6.animl
+BS-372864,Step Results,Measured,Start Time,DateTime,,,Example6.animl
+BS-372864,Step Results,Measured,End Time,DateTime,,,Example6.animl
+BS-372864,Step Results,Measured,Actual Amount,Float64,0.33,g,Example6.animl
+BS-372865,Step Results,Measured,Start Time,DateTime,,,Example6.animl
+BS-372865,Step Results,Measured,End Time,DateTime,,,Example6.animl
+BS-372865,Step Results,Measured,Actual Amount,Float64,42.8,g,Example6.animl
+BS-372866,Step Results,Measured,Start Time,DateTime,,,Example6.animl
+BS-372866,Step Results,Measured,End Time,DateTime,,,Example6.animl
+BS-372866,Step Results,Measured,Actual Amount,Float64,158.1,g,Example6.animl
+BS-372867,Step Results,Measured,Start Time,DateTime,,,Example6.animl
+BS-372867,Step Results,Measured,End Time,DateTime,,,Example6.animl
+BS-372867,Step Results,Measured,Actual Amount,Float64,0.88,g,Example6.animl
+BS-372868,Step Results,Measured,Start Time,DateTime,,,Example6.animl
+BS-372868,Step Results,Measured,End Time,DateTime,,,Example6.animl
+BS-372868,Step Results,Measured,Actual Amount,Float64,9.2,g,Example6.animl
+BS-372869,Step Results,Measured,Start Time,DateTime,,,Example6.animl
+BS-372869,Step Results,Measured,End Time,DateTime,,,Example6.animl
+BS-372869,Step Results,Measured,Actual Amount,Float64,2.53,g,Example6.animl
+BS-372870,Step Results,Measured,Start Time,DateTime,,,Example6.animl
+BS-372870,Step Results,Measured,End Time,DateTime,,,Example6.animl
+BS-372870,Step Results,Measured,Actual Amount,Float64,156.65,g,Example6.animl
+BS-372871,Step Results,Measured,Start Time,DateTime,,,Example6.animl
+BS-372871,Step Results,Measured,End Time,DateTime,,,Example6.animl
+BS-372871,Step Results,Measured,Actual Amount,Float64,31.71,g,Example6.animl
+BS-372856,Step Results,Measured,Start Time,DateTime,,,Example6.animl
+BS-372856,Step Results,Measured,End Time,DateTime,,,Example6.animl
+BS-372857,Step Results,Measured,Start Time,DateTime,,,Example6.animl
+BS-372857,Step Results,Measured,End Time,DateTime,,,Example6.animl
+BS-372857,Step Results,Measured,Actual Temperature,Float64,,°C,Example6.animl
+,UserProperties,UserProperties,Conductivity,String,6.31,uS/cm,Example8.animl
+,UserProperties,UserProperties,pH,String,4.16,,Example8.animl
+,UserProperties,UserProperties,Conductivity,String,12.0,uS/cm,Example9.animl
+,UserProperties,UserProperties,pH,String,6.54,,Example9.animl

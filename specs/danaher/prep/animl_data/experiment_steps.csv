@@ -1,0 +1,64 @@
+experiment_step_id,name,timestamp,method_name,device_manufacturer,device_name,sample_id,sample_role,sample_purpose,_source_file
+,Process Information,,,,,Matcha-00001,Process Info,consumed,Example1.animl
+1,Add 3.4g of Basil,,,,,Basil-00002,Ingredient Added,consumed,Example1.animl
+2,Add 70.2g of Oregano,,,,,Oregano-00003,Ingredient Added,consumed,Example1.animl
+3,Add 6.4g of Pepper,,,,,Pepper-00004,Ingredient Added,consumed,Example1.animl
+es-1,Particle Size Distribution 1,2025-06-24T12:37:25.090Z,Particle Size Distribution,Malvern Panalytical,Mastersizer 3000,Matcha-00001,Test Sample,consumed,Example10.animl
+es-2,Particle Size Distribution 2,2025-06-24T12:37:25.090Z,Particle Size Distribution,Malvern Panalytical,Mastersizer 3000,Matcha-00001,Test Sample,consumed,Example10.animl
+es-3,Particle Size Distribution 3,2025-06-24T12:37:25.090Z,Particle Size Distribution,Malvern Panalytical,Mastersizer 3000,Matcha-00001,Test Sample,consumed,Example10.animl
+es-4,Particle Size Distribution 4,2025-06-24T12:37:25.090Z,Particle Size Distribution,Malvern Panalytical,Mastersizer 3000,Matcha-00001,Test Sample,consumed,Example10.animl
+es-5,Particle Size Distribution 5,2025-06-24T12:37:25.090Z,Particle Size Distribution,Malvern Panalytical,Mastersizer 3000,Matcha-00001,Test Sample,consumed,Example10.animl
+es-6,Particle Size Distribution 6,2025-06-24T12:37:25.090Z,Particle Size Distribution,Malvern Panalytical,Mastersizer 3000,Matcha-00001,Test Sample,consumed,Example10.animl
+es-7,Calculated Particle Size Distribution,2025-06-24T12:37:25.090Z,Particle Size Distribution,Malvern Panalytical,Mastersizer 3000,Matcha-00001,Test Sample,consumed,Example10.animl
+,Process Information,,,,,Matcha-00001,Process Info,consumed,Example2.animl
+1,Add 4.0g of Basil,,,,,Basil-00002,Ingredient Added,consumed,Example2.animl
+2,Add 4.0g of Oregano,,,,,Oregano-00003,Ingredient Added,consumed,Example2.animl
+3,Add 2.3g of Pepper,,,,,Pepper-00004,Ingredient Added,consumed,Example2.animl
+4,Add 2.3g of Pepper,,,,,Pepper-00004,Ingredient Added,consumed,Example2.animl
+5,Add 2.3g of Pepper,,,,,Pepper-00004,Ingredient Added,consumed,Example2.animl
+6,Add 2.3g of Pepper,,,,,Pepper-00004,Ingredient Added,consumed,Example2.animl
+7,Add 38.4g of Cinnamon,,,,,Cinnamon-00005,Ingredient Added,consumed,Example2.animl
+8,Add 20.0g of Ginger,,,,,Ginger-00006,Ingredient Added,consumed,Example2.animl
+es-1,D33 Water (LO / Duplex emulsions),2025-04-23T12:46:41.184+05:30,D33 Water (LO / Duplex emulsions),Bruker,NMR MQ20,Matcha-00001,Test Sample,consumed,Example3.animl
+es-2,External/Free Water Duplex,2025-04-23T12:46:41.184+05:30,External/Free Water Duplex,Bruker,NMR MQ20,Matcha-00001,Test Sample,consumed,Example3.animl
+e-1,Tiamo Experiment Step 1,,Salt 0.1M  (automated),,,Matcha-00001,Sample,consumed,Example4.animl
+BS-372908,#1 - Add 3152.212778g of Basil,,,,,Basil-00002,Ingredient Added,consumed,Example5.animl
+BS-372907,#2 - Start stirring at 159.74rpm,,,,,Matcha-00001,Formulation,produced,Example5.animl
+BS-372909,#3 - Add 35.0g of Oregano,,,,,Oregano-00003,Ingredient Added,consumed,Example5.animl
+BS-372906,#4 - Heat to 28.08C and wait until reached,,,,,Matcha-00001,Formulation,produced,Example5.animl
+BS-372910,#5 - Add 12.6g of Pepper,,,,,Pepper-00004,Ingredient Added,consumed,Example5.animl
+BS-372911,#6 - Add 1.75g of Cinnamon,,,,,Cinnamon-00005,Ingredient Added,consumed,Example5.animl
+BS-372912,#7 - Add 0.291667g of Ginger,,,,,Ginger-00006,Ingredient Added,consumed,Example5.animl
+BS-372913,#8 - Add 38.5g of Turmeric,,,,,Turmeric-00007,Ingredient Added,consumed,Example5.animl
+BS-372914,#9 - Add 155.555555g of Vanilla,,,,,Vanilla-00008,Ingredient Added,consumed,Example5.animl
+BS-372915,#10 - Add 0.875g of Rosemary,,,,,Rosemary-00009,Ingredient Added,consumed,Example5.animl
+BS-372916,#11 - Add 9.1g of Thyme,,,,,Thyme-00010,Ingredient Added,consumed,Example5.animl
+BS-372917,#12 - Add 2.45g of Coffee,,,,,Coffee-00011,Ingredient Added,consumed,Example5.animl
+BS-372918,#13 - Add 313.25g of Tea,,,,,Tea-00012,Ingredient Added,consumed,Example5.animl
+BS-372919,#14 - Add 28.665g of Cocoa,,,,,Cocoa-00013,Ingredient Added,consumed,Example5.animl
+BS-372904,#15 - Wait for 360.0s,,,,,Matcha-00001,Formulation,produced,Example5.animl
+BS-372905,#16 - Heat to 28.1C and continue,,,,,Matcha-00001,Formulation,produced,Example5.animl
+BS-372860,#1 - Add 3152.212778g of Basil,,,,,Basil-00002,Ingredient Added,consumed,Example6.animl
+BS-372859,#2 - Start stirring at 159.74rpm,,,,,Matcha-00001,Formulation,produced,Example6.animl
+BS-372861,#3 - Add 35.0g of Oregano,,,,,Oregano-00003,Ingredient Added,consumed,Example6.animl
+BS-372858,#4 - Heat to 28.71°C and wait until reached,,,,,Matcha-00001,Formulation,produced,Example6.animl
+BS-372862,#5 - Add 12.6g of Pepper,,,,,Pepper-00004,Ingredient Added,consumed,Example6.animl
+BS-372863,#6 - Add 1.75g of Cinnamon,,,,,Cinnamon-00005,Ingredient Added,consumed,Example6.animl
+BS-372864,#7 - Add 0.291667g of Ginger,,,,,Ginger-00006,Ingredient Added,consumed,Example6.animl
+BS-372865,#8 - Add 38.5g of Turmeric,,,,,Turmeric-00007,Ingredient Added,consumed,Example6.animl
+BS-372866,#9 - Add 155.555555g of Vanilla,,,,,Vanilla-00008,Ingredient Added,consumed,Example6.animl
+BS-372867,#10 - Add 0.875g of Rosemary,,,,,Rosemary-00009,Ingredient Added,consumed,Example6.animl
+BS-372868,#11 - Add 9.1g of Thyme,,,,,Thyme-00010,Ingredient Added,consumed,Example6.animl
+BS-372869,#12 - Add 2.45g of Coffee,,,,,Coffee-00011,Ingredient Added,consumed,Example6.animl
+BS-372870,#13 - Add 313.25g of Tea,,,,,Tea-00012,Ingredient Added,consumed,Example6.animl
+BS-372871,#14 - Add 28.665g of Cocoa,,,,,Cocoa-00013,Ingredient Added,consumed,Example6.animl
+BS-372856,#15 - Wait for 360.0s,,,,,Matcha-00001,Formulation,produced,Example6.animl
+BS-372857,#16 - Heat to 28.97°C and continue,,,,,Matcha-00001,Formulation,produced,Example6.animl
+es-0,Rotational Viscosimetry 1,2024-03-25T16:56:40.000Z,Rheology Data,,Unilever,Matcha-00001,Test Sample,consumed,Example7.animl
+es-1,Rotational Viscosimetry 2,2024-03-25T16:56:40.000Z,Rheology Data,,Unilever,Matcha-00001,Test Sample,consumed,Example7.animl
+es-2,Rotational Viscosimetry 3,2024-03-25T16:56:40.000Z,Rheology Data,,Unilever,Matcha-00001,Test Sample,consumed,Example7.animl
+d218f48f-2b8b-40d1-825f-20920163af77,Flow-Peak Hold,,Wingspan PQS Viscosity,,,Matcha-00001,Test Sample,consumed,Example8.animl
+,Additional Properties,,,,,,,,Example8.animl
+f552fb4f-d992-40d6-9bba-b68d16214631,Flow-Peak Hold,,"2, 21, 106 - 25C",,,Matcha-00001,Test Sample,consumed,Example9.animl
+4c7df345-690a-4134-b22e-74dbfea20f39,Flow-Peak Hold,,"2, 21, 106 - 25C",,,Matcha-00001,Test Sample,consumed,Example9.animl
+,Additional Properties,,,,,,,,Example9.animl
