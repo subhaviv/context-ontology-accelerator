@@ -26,55 +26,58 @@ Sample `reason` (real semantic justification, not a diagnostic string):
 
 ## Findings for the COA eng sync — corrected by live evidence
 
-### 2 — THE REAL GAP (VERIFIED): COA grounds classes to the target but NOT properties.
-r2rml.ttl has 142 column mappings — every column IS mapped — but **all to minted `induced#` predicates,
-ZERO to the target**: `grep rr:predicate` → 47 induced, 0 `aml:`.
+### 2 — THE REAL GAP (VERIFIED, CORRECTED): column-level SKOS alignment axioms are not emitted.
+**Important correction to an earlier read of this run.** COA aligns induced terms to the target via SKOS
+axioms in the induced ontology — it does NOT (and should not) rename R2RML predicates to the target. The
+induced namespace (`ind:`) is the PROPOSAL; grounding annotates it with `skos:exactMatch` links. Minting
+`ind:` predicates in R2RML is therefore CORRECT — Ontop serves this customer's data on the induced
+vocabulary, and the target binding lives in the alignment axioms.
+
+Verified in `ontology.ttl` (job b2c50933): exactly 3 alignment axioms, ALL class-level —
 ```
-rr:column "device_manufacturer" → rr:predicate ind:experimentSteps_deviceManufacturer  (induced, not aml:)
+<ind:Measurements>    skos:exactMatch  aml:Result
+<ind:ExperimentSteps> skos:exactMatch  aml:ExperimentStep
+<ind:Samples>         skos:exactMatch  aml:Sample
 ```
-**Control test that makes this a verified gap, not a thin-target artifact:** 5 source columns have an
-EXACT/near-exact AnIML property to bind to — `name`→`aml:name`, `comment`→`aml:comment`,
-`timestamp`→`aml:timeStamp`, `value`→`aml:value`, `unit`→`aml:hasUnits`. COA bound **none** of them to
-the target; all 5 still became `ind:` predicates. So the target HAD the properties and COA did not use
-them — the grounding pipeline operates at the **class level only**; column→property grounding against the
-target is not happening.
+**ZERO column/property-level alignment axioms.** The column second-pass in `pipeline.py` (~line 640)
+DOES compute a `ConceptMatch` with `matched_class_uri` = the target property (e.g. `aml:value` for the
+`value` column), but the ontology builder never writes the corresponding
+`ind:measurements_value skos:exactMatch aml:value`. So field-level target mappings are COMPUTED and then
+DROPPED — classes get alignment axioms, columns do not.
 
-(Note on AnIML as a target: it is a STRUCTURAL/document ontology — Sample, Parameter, Category, Unit — so
-most domain columns like `Initial pH`, `Mixer ID`, `Lot Number` genuinely have no AnIML property and
-minting induced predicates for THOSE is correct. The gap is proven only by the 5 columns that DID have an
-exact target match and still were not grounded.)
+**Why this is the right framing (not "make R2RML speak aml:"):** the migration field→field deliverable
+(`Titer_Value → Result_Value`) is derivable from the alignment axioms — the governed, SKOS way. The fix
+is to MIRROR the class-alignment emission for columns; it does NOT touch R2RML, SQL, or Ontop, so there is
+no SHACL/range/join blast radius. The induced predicates stay; we only ADD column alignment axioms.
 
-The Danaher use case's core requirement is column/field-level mapping to the target
-(`Titer_Value → Result_Value`). COA grounds the table layer to the target but mints induced predicates for
-the column layer even when a target property exists. **The precise, evidence-backed ask:** can the
-grounding pipeline ground PROPERTIES against the target, not just classes? Evidence: `value`/`name`/`unit`
+(Note on AnIML as a target: it is a STRUCTURAL/document ontology, so most domain columns — `Initial pH`,
+`Mixer ID`, `Lot Number` — genuinely have no AnIML property and SHOULD stay induced-only with no axiom.
+The gap is proven by the columns that DID have an exact target match — `value`→`aml:value`,
+`name`→`aml:name`, `timestamp`→`aml:timeStamp`, `unit`→`aml:hasUnits` — and still got no alignment axiom.)
 
-### 2b — HOW the change would work + per-strategy state (verified in code)
-The recall half ALREADY EXISTS; what's missing is turning it into a scored binding.
-- **Property embeddings are indexed** on ingest (`entity_type="property"`), so target properties
-  (`aml:value`, `aml:name`, `aml:hasUnits`) are searchable in the pool.
-- **`table_to_ontology`** (the path run here): tables call `grounding_svc.ground_table` (recall→rerank→
-  bind a scored `ConceptMatch`). Columns do NOT call grounding at all — they only mint `ind:` predicates
-  (`table_to_ontology.py:~220`: "column-level matching reads only its OWN table identity's grounding
-  result"). THIS is why `value` never reached `aml:value`.
-- **RIGOR** (`rigor_ontology.py:_retrieve_ontology_context`, ~600): DOES
-  `search_embeddings(entity_type="property")` per column — but only to build a human-readable RAG block
-  ("column 'value' → aml:value (similarity=0.9)") fed to the generator LLM. Reuse is the LLM's discretion,
-  NOT a deterministic scored binding, and not recorded as a column→property `ConceptMatch`.
+### 2b — The fix, and per-strategy/recall state (verified in code)
+- **Recall exists:** property embeddings are indexed on ingest (`entity_type="property"`), and the column
+  second-pass (`pipeline.py` ~640, `_get_candidates(..., "property", ontology_id=scoped)`) recalls target
+  properties and `_pick_winner` returns a `ConceptMatch` carrying the target `matched_class_uri`.
+- **Emission is the gap:** the builder emits class alignment axioms but NOT column ones. So the match
+  reaches the builder and is not turned into an axiom.
+- **Scope of the fix:** in the ontology builder, when a column's `ConceptMatch` has `matched_class_uri`
+  and `match_type in (exact, high_confidence)`, emit `<ind:col> skos:exactMatch <target property>` —
+  exactly mirroring the class path. Gate on confidence (short column names score low, ~0.45, so a loose
+  gate would mis-align `device_manufacturer`→`aml:name`). R2RML unchanged.
+- **RIGOR** (`rigor_ontology.py:_retrieve_ontology_context`): recalls target properties per column only as
+  RAG context for the generator LLM — not a recorded alignment either.
 
-So NEITHER strategy emits a first-class scored column→target-property match (with similarity +
-relationship) the way `ground_table` does for classes. **Refined ask:** property recall exists (indexed
-embeddings + RIGOR's per-column search) — can column grounding be promoted to a first-class SCORED binding
-(recall→rerank→bind→record, fallback to minted `ind:` only when recall is empty), reusing the recall
-that's already there? This is closing the last mile, not building from scratch.
-
-had exact AnIML matches and still minted induced predicates.
+So the corrected ask: **class grounding emits `skos:exactMatch` alignment axioms; column grounding
+computes the match but emits no axiom. Mirror the class-alignment emission for columns (confidence-gated),
+leaving R2RML induced predicates intact.**
 
 ### 1a — `relationship` + `reason` PERSIST on this path. Ask softens.
 Both populated 3/3 on `table_to_ontology` (grounding_enhanced). The drop we found in code is on the
 **RIGOR** construction site (`rigor_ontology.py:841/855`), NOT the grounding path used here. So the ask is
 no longer "please wire relationship/reason" — it is "confirm it's wired on all paths; why does RIGOR
 drop it". The equivalence flag (skos:exactMatch) IS in the output today for the grounding path.
+
 
 ### matched_count discrepancy — not reproduced.
 This run is cleanly 3 grounded / 0 novel, internally consistent. The earlier Calanthir 7-vs-13 oddity
