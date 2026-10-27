@@ -26,51 +26,67 @@ Sample `reason` (real semantic justification, not a diagnostic string):
 
 ## Findings for the COA eng sync — corrected by live evidence
 
-### 2 — THE REAL GAP (VERIFIED, CORRECTED): column-level SKOS alignment axioms are not emitted.
-**Important correction to an earlier read of this run.** COA aligns induced terms to the target via SKOS
-axioms in the induced ontology — it does NOT (and should not) rename R2RML predicates to the target. The
-induced namespace (`ind:`) is the PROPOSAL; grounding annotates it with `skos:exactMatch` links. Minting
-`ind:` predicates in R2RML is therefore CORRECT — Ontop serves this customer's data on the induced
-vocabulary, and the target binding lives in the alignment axioms.
+### 2 — THE REAL GAP (FINAL, VERIFIED): column→property alignment is implemented but no column clears the confidence gate.
+**This supersedes two earlier reads of this run.** Walking the code end-to-end (not just the output):
 
-Verified in `ontology.ttl` (job b2c50933): exactly 3 alignment axioms, ALL class-level —
-```
-<ind:Measurements>    skos:exactMatch  aml:Result
-<ind:ExperimentSteps> skos:exactMatch  aml:ExperimentStep
-<ind:Samples>         skos:exactMatch  aml:Sample
-```
-**ZERO column/property-level alignment axioms.** The column second-pass in `pipeline.py` (~line 640)
-DOES compute a `ConceptMatch` with `matched_class_uri` = the target property (e.g. `aml:value` for the
-`value` column), but the ontology builder never writes the corresponding
-`ind:measurements_value skos:exactMatch aml:value`. So field-level target mappings are COMPUTED and then
-DROPPED — classes get alignment axioms, columns do not.
+1. The ontology builder ALREADY emits column→target-property alignment —
+   `table_to_ontology.py:787-792`:
+   ```python
+   if cm and cm.match_type in ("exact", "high_confidence") and cm.matched_class_uri:
+       g.add((prop_uri, OWL.equivalentProperty, URIRef(cm.matched_class_uri)))
+       if cm.similarity is not None:
+           g.add((prop_uri, match_confidence, Literal(cm.similarity, XSD.float)))
+   ```
+   So the feature EXISTS, confidence-gated, emitting `owl:equivalentProperty`. There is **no missing
+   emission code and no builder change to make.**
 
-**Why this is the right framing (not "make R2RML speak aml:"):** the migration field→field deliverable
-(`Titer_Value → Result_Value`) is derivable from the alignment axioms — the governed, SKOS way. The fix
-is to MIRROR the class-alignment emission for columns; it does NOT touch R2RML, SQL, or Ontop, so there is
-no SHACL/range/join blast radius. The induced predicates stay; we only ADD column alignment axioms.
+2. It never fired: `ontology.ttl` has `owl:equivalentProperty` count = 0, and `matchConfidence` only on
+   the 3 CLASSES (0.92/0.95/0.95), none on any column. So every column's `ConceptMatch.match_type` came
+   back BELOW `high_confidence`.
 
-(Note on AnIML as a target: it is a STRUCTURAL/document ontology, so most domain columns — `Initial pH`,
-`Mixer ID`, `Lot Number` — genuinely have no AnIML property and SHOULD stay induced-only with no axiom.
-The gap is proven by the columns that DID have an exact target match — `value`→`aml:value`,
-`name`→`aml:name`, `timestamp`→`aml:timeStamp`, `unit`→`aml:hasUnits` — and still got no alignment axiom.)
+3. Why: column recall is pure cosine with **no exact-name shortcut** (`pipeline.py` `_get_candidates` →
+   `_search_one` → `_cosine_similarity`; the TABLE path has an exact-name→1.0 shortcut, the COLUMN path
+   does not). `_classify` bands: `≥0.95` exact, `≥0.80` high_confidence, `≥0.50` ambiguous, else novel.
+   The AnIML columns recalled ~0.44-0.46 — even `value`↔`aml:value` (identical names) — so they
+   classified `novel` and the gate correctly skipped them.
 
-### 2b — The fix, and per-strategy/recall state (verified in code)
-- **Recall exists:** property embeddings are indexed on ingest (`entity_type="property"`), and the column
-  second-pass (`pipeline.py` ~640, `_get_candidates(..., "property", ontology_id=scoped)`) recalls target
-  properties and `_pick_winner` returns a `ConceptMatch` carrying the target `matched_class_uri`.
-- **Emission is the gap:** the builder emits class alignment axioms but NOT column ones. So the match
-  reaches the builder and is not turned into an axiom.
-- **Scope of the fix:** in the ontology builder, when a column's `ConceptMatch` has `matched_class_uri`
-  and `match_type in (exact, high_confidence)`, emit `<ind:col> skos:exactMatch <target property>` —
-  exactly mirroring the class path. Gate on confidence (short column names score low, ~0.45, so a loose
-  gate would mis-align `device_manufacturer`→`aml:name`). R2RML unchanged.
-- **RIGOR** (`rigor_ontology.py:_retrieve_ontology_context`): recalls target properties per column only as
-  RAG context for the generator LLM — not a recorded alignment either.
+**So the gap is RECALL/SCORING, not emission or missing feature.** Short column tokens (`value`, `name`,
+`unit`) embed weakly against a property whose embedding text is a long definition, and there is no
+exact/normalized-name boost for columns, so identical-name matches score ~0.45 and never reach the
+alignment gate that already exists.
 
-So the corrected ask: **class grounding emits `skos:exactMatch` alignment axioms; column grounding
-computes the match but emits no axiom. Mirror the class-alignment emission for columns (confidence-gated),
-leaving R2RML induced predicates intact.**
+### 2b — The actual fix (small, in recall — NOT the builder)
+Add a column exact/normalized-name shortcut mirroring the table path: when a source column name normalizes
+equal to a target property's label/local-name, boost that candidate's score (to ~1.0 / `exact`) so it
+clears the gate and the EXISTING builder code (`:787`) emits `owl:equivalentProperty`. Change is in the
+column recall/scoring (`pipeline.py` `_pick_winner`/`_get_candidates` or a normalized-name pass), not the
+emission. Everything downstream of emission is already wired. RIGOR (`_retrieve_ontology_context`) also
+recalls target properties per column but only as LLM RAG context, so it has the same no-shortcut weakness.
+
+**Corrected ask to the eng team:** column→property alignment is implemented and confidence-gated
+(`owl:equivalentProperty`, `:787`), but no column cleared the gate — even exact-name matches like
+`value`↔`aml:value` recall at ~0.45 because the column path has no exact-name shortcut (the table path
+does). Can column grounding get an exact/normalized-name boost so identical-name matches clear the gate?
+
+### 2c — ROOT CAUSE: table grounding is a 3-layer pipeline; column matching is 1 layer.
+This asymmetry is why `samples→aml:Sample` scored 0.95 but `value→aml:value` died at 0.45.
+
+| Step | Table (`ground_table`, grounding.py) | Column (`_pick_winner`, pipeline.py) |
+|---|---|---|
+| 1. Embedding recall (cosine) | yes | yes |
+| 2. Exact-name check (`_exact_name_matches`) | **yes** — unique exact name auto-grounds (STANDARD) or feeds the signal to the reranker (ENHANCED) | **no** |
+| 3. LLM rerank (Claude Haiku judges the match, returns confidence + relationship) | **yes** | **no** |
+
+- A table's final score is the **LLM reranker's** verdict: it recognized `samples` ≈ `Sample` and returned
+  0.95/`exact`, overriding the weak ~0.45 raw cosine.
+- A column's final score **is** the raw cosine (~0.45) — `_pick_winner` just takes the top candidate and
+  `_classify`s it. Nothing lifts an identical-name match, so it lands `novel` and never reaches the
+  alignment gate at `:787`.
+
+So the gap is structural: **columns are missing the exact-name boost AND the LLM rerank that tables have.**
+This also explains why input-shaping (enriching Glue column descriptions) is an unreliable workaround — it
+nudges raw cosine but there is no reranker to *recognize* the match the way tables get. The robust fix is
+to give columns the same exact-name/rerank treatment tables already have.
 
 ### 1a — `relationship` + `reason` PERSIST on this path. Ask softens.
 Both populated 3/3 on `table_to_ontology` (grounding_enhanced). The drop we found in code is on the
