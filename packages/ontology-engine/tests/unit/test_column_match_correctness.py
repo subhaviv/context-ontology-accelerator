@@ -32,7 +32,7 @@ from opensearchpy.exceptions import TransportError
 pytestmark = pytest.mark.unit
 
 
-def _table_concept() -> SourceConcept:
+def _table_concept(vector: list[float] | None = None) -> SourceConcept:
     return SourceConcept(
         table_fqn="db.orders",
         table_name="orders",
@@ -40,6 +40,7 @@ def _table_concept() -> SourceConcept:
         description="orders table",
         data_type="",
         is_table_level=True,
+        vector=vector if vector is not None else [0.1] * 8,
     )
 
 
@@ -81,23 +82,25 @@ def _benign_novel_table_match() -> ConceptMatch:
 def test_search_error_does_not_become_novel(exc):
     """When the property search raises (exhausted-retry / connection fault),
     match_concepts must RAISE — NOT swallow the error and classify the column
-    'novel'. GroundingService is patched so the table pass yields no scoped
-    ontology; the column pass then invokes the grounding-union search, which
-    raises. grounding_ontology_ids is non-empty so search_embeddings is actually
-    called (an empty pool would opt out and prove nothing)."""
+    'novel'. Columns now route through the real GroundingService.ground_property
+    → _recall → oc.search_embeddings, which raises. grounding_ontology_ids is
+    non-empty so search_embeddings is actually called (an empty pool would opt
+    out and prove nothing)."""
     oc = MagicMock()
     oc.search_embeddings.side_effect = exc
     pipeline = InductionPipeline(None, None, oc)
 
-    with patch("coa_ontology.inducer.services.pipeline.GroundingService") as mock_grounding_cls:
-        mock_grounding_cls.return_value.to_concept_match.return_value = _benign_novel_table_match()
-        with pytest.raises(type(exc)):
-            pipeline.match_concepts(
-                [_table_concept(), _column_concept()],
-                confidence_threshold=0.8,
-                model_id="titan",
-                grounding_ontology_ids=["some-onto"],
-            )
+    # Real GroundingService (no patch): the column pass invokes ground_property →
+    # _recall → the raising search. STANDARD mode keeps it LLM-free; the raise
+    # happens in recall, before any rerank.
+    with pytest.raises(type(exc)):
+        pipeline.match_concepts(
+            [_table_concept([0.1] * 8), _column_concept()],
+            confidence_threshold=0.8,
+            model_id="titan",
+            grounding_ontology_ids=["some-onto"],
+            grounding_mode="STANDARD",
+        )
 
 
 def test_empty_search_result_is_novel():
@@ -108,14 +111,13 @@ def test_empty_search_result_is_novel():
     oc.search_embeddings.return_value = []
     pipeline = InductionPipeline(None, None, oc)
 
-    with patch("coa_ontology.inducer.services.pipeline.GroundingService") as mock_grounding_cls:
-        mock_grounding_cls.return_value.to_concept_match.return_value = _benign_novel_table_match()
-        matches = pipeline.match_concepts(
-            [_table_concept(), _column_concept()],
-            confidence_threshold=0.8,
-            model_id="titan",
-            grounding_ontology_ids=["some-onto"],
-        )
+    matches = pipeline.match_concepts(
+        [_table_concept([0.1] * 8), _column_concept()],
+        confidence_threshold=0.8,
+        model_id="titan",
+        grounding_ontology_ids=["some-onto"],
+        grounding_mode="STANDARD",
+    )
 
     col_matches = [m for m in matches if m.source_column == "total"]
     assert len(col_matches) == 1
@@ -241,3 +243,66 @@ def test_strategy_still_falls_back_on_non_transport_error():
     assert all(m.match_type == "novel" for m in matches)
     assert "orders" in novel
     mock_log.exception.assert_called_once()
+
+
+# ── NEW CAPABILITY: a column now grounds to a target PROPERTY (not just tables→classes) ──
+
+
+def test_column_grounds_to_target_property_via_exact_name():
+    """The fix: columns route through GroundingService.ground_property (recall →
+    exact-name → rerank), the same pipeline tables use — so a column whose name
+    matches a target property grounds to it, which the builder then emits as
+    owl:equivalentProperty. Before the fix, columns got cosine-only scoring with
+    no exact-name shortcut, so an identical-name match (value↔value) stayed at
+    raw cosine and classified novel.
+
+    STANDARD mode keeps this LLM-free: ground_table's exact-name layer auto-grounds
+    a unique normalized name match at confidence 1.0. We mock search_embeddings to
+    return a property candidate whose local name equals the column name.
+    """
+    column_name = "value"
+
+    def _fake_search(*, vector, embedding_type, model_id, entity_type, ontology_id, top_k, **_kwargs):
+        # Only the column (property search) gets a candidate; the table pass
+        # (entity_type="class") recalls nothing → table is novel, so the column
+        # pass falls back to the grounding-union pool.
+        if entity_type != "property":
+            return []
+        return [
+            {
+                "entity_uri": "http://www.w3id.org/animl/ontology/value",
+                "ontology_id": ontology_id,
+                "score": 0.44,  # weak cosine — the OLD path would classify this novel
+                "text": "value The measured value of a parameter",
+                "vector": None,
+            }
+        ]
+
+    oc = MagicMock()
+    oc.search_embeddings.side_effect = _fake_search
+    pipeline = InductionPipeline(None, None, oc)
+
+    matches = pipeline.match_concepts(
+        [_table_concept([0.1] * 8), _column_concept_named(column_name)],
+        confidence_threshold=0.8,
+        model_id="titan",
+        grounding_ontology_ids=["urn:ontology:animl"],
+        grounding_mode="STANDARD",
+    )
+
+    col = next(m for m in matches if m.source_column == column_name)
+    # Despite raw cosine 0.44, the exact-name layer grounds it at exact/1.0 —
+    # clearing the gate that the builder keys on for owl:equivalentProperty.
+    assert col.matched_class_uri == "http://www.w3id.org/animl/ontology/value"
+    assert col.match_type == "exact"
+
+
+def _column_concept_named(name: str) -> SourceConcept:
+    return SourceConcept(
+        table_fqn="db.orders",
+        table_name="orders",
+        column_name=name,
+        description=f"the {name}",
+        data_type="float",
+        vector=[0.1] * 8,
+    )

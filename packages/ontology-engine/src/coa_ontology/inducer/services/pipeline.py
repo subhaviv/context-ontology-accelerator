@@ -652,40 +652,41 @@ class InductionPipeline:
             identity = _concept_identity(concept, legacy_table_identities)
             scoped_onto_id = table_ontology.get(identity)
 
-            candidates = []
-            if scoped_onto_id is not None:
-                candidates = self._get_candidates(
-                    concept,
-                    model_id,
-                    "property",
-                    ontology_id=scoped_onto_id,
+            # Route columns through the SAME recall -> exact-name -> LLM-rerank
+            # pipeline tables use (grounding_svc.ground_property), instead of the
+            # old cosine-only _get_candidates + _pick_winner. This closes the
+            # column/table asymmetry: previously a column's score was its raw
+            # cosine (~0.45 even for identical-name matches like value<->aml:value),
+            # so it classified novel and never reached the alignment gate. With the
+            # reranker, an identical-name/semantically-aligned property is
+            # recognized and scored high enough to emit owl:equivalentProperty.
+            #
+            # Pool: prefer the column's parent-table matched ontology (narrowest,
+            # most precise); fall back to the full grounding union when the table
+            # did not ground to a single ontology. Mirrors the old scoped-then-union
+            # behavior, now carried by ground_property's ontology_ids arg.
+            pool = [scoped_onto_id] if scoped_onto_id else (grounding_ontology_ids or [])
+            if not pool:
+                # No grounding scope -> novel, same as _pick_winner([]).
+                return self._pick_winner(
+                    concept, [], confidence_threshold, scoring_strategy, source_table_identity=identity
                 )
-            # Fall back to grounding union (or global) if scoped found nothing.
-            if not candidates or max(c["lexical_sim"] for c in candidates) < 0.50:
-                candidates = self._get_candidates(
-                    concept,
-                    model_id,
-                    "property",
-                    grounding_ontology_ids=grounding_ontology_ids,
-                )
-
-            # Apply structural scoring if requested
-            if scoring_strategy == "structural_fusion" and candidates:
-                class_uri = table_class_uri.get(identity)
-                if class_uri:
-                    self._apply_structural_scores(
-                        candidates,
-                        class_uri,
-                        structural_weight,
-                    )
-
-            return self._pick_winner(
-                concept,
-                candidates,
-                confidence_threshold,
-                scoring_strategy,
-                source_table_identity=identity,
+            result = grounding_svc.ground_property(
+                column_name=concept.column_name,
+                column_description=concept.description or "",
+                concept_vector=concept.vector,
+                model_id=model_id,
+                confidence_threshold=confidence_threshold,
+                grounding_mode=grounding_mode,
+                ontology_ids=pool,
+                rerank_max_tokens=rerank_max_tokens,
             )
+            match = grounding_svc.to_concept_match(result)
+            # ground_property returns source_column already; stamp identity so the
+            # builder's _match_for_table lookup resolves it.
+            match.source_table = concept.table_name
+            match.source_table_identity = identity
+            return match
 
         _col_match_t0 = time.perf_counter()
         try:
