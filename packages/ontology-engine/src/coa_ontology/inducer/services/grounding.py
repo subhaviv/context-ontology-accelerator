@@ -193,6 +193,45 @@ _RERANK_SYSTEM_CLASS = (
     "- Output valid JSON only. No markdown, no explanation outside the JSON."
 )
 
+# Property-flavored variant of _RERANK_SYSTEM, used when grounding a source
+# COLUMN against candidate ontology PROPERTIES (datatype/object properties).
+# Same recall/exact-name internals and the byte-identical JSON contract; only
+# the framing changes so the reranker judges column-vs-property alignment. This
+# is what gives a column the same recall -> exact-name -> LLM-rerank pipeline a
+# table gets, so an identical-name match like value<->aml:value is recognized by
+# the LLM and scored high enough to clear the alignment gate (instead of dying
+# at ~0.45 raw cosine). A wrong name match (e.g. a generic "name" property in an
+# unrelated ontology) is still caught here, exactly as the table reranker catches
+# "Dublin Core Policy != insurance policy".
+_RERANK_SYSTEM_PROPERTY = (
+    "You are an ontology grounding expert. Given a source database COLUMN "
+    "(with its name, data type and description) and a list of candidate "
+    "ontology PROPERTIES (each with its formal definition), decide which "
+    "candidate property the column should be grounded to.\n\n"
+    "Output EXACTLY one JSON object with these fields:\n"
+    '  {"choice": "<localName or NONE>", '
+    '"relationship": "<exactMatch|closeMatch|broadMatch|'
+    'narrowMatch|relatedMatch|none>", '
+    '"confidence": <0.0-1.0>, "reason": "<one sentence>"}\n\n'
+    "Rules:\n"
+    "- If a candidate property's name matches or closely describes the "
+    "column's meaning, PICK IT. Prefer the candidate whose definition aligns "
+    "with the column's name and description.\n"
+    "- When multiple candidates share the same name (e.g. from different "
+    "ontologies), pick the one whose definition best matches the column's "
+    "domain. If one has a definition and the other doesn't, prefer the one "
+    "with a definition.\n"
+    "- Pick NONE only if no candidate genuinely represents the same or closely "
+    "related attribute — i.e., the column is a truly novel attribute not "
+    "covered by any candidate.\n"
+    "- exactMatch: the column IS this property (same meaning, same scope)\n"
+    "- closeMatch: nearly interchangeable, minor scope difference\n"
+    "- broadMatch: candidate is a broader/parent property\n"
+    "- narrowMatch: candidate is a narrower/child property\n"
+    "- relatedMatch: conceptually associated but distinct\n"
+    "- Output valid JSON only. No markdown, no explanation outside the JSON."
+)
+
 
 @dataclass
 class GroundingCandidate:
@@ -506,6 +545,58 @@ class GroundingService:
             _subject_kind="class",
         )
 
+    def ground_property(
+        self,
+        column_name: str,
+        column_description: str,
+        concept_vector: list[float],
+        model_id: str,
+        confidence_threshold: float = 0.80,
+        grounding_mode: str = "ENHANCED",
+        ontology_ids: list[str] | None = None,
+        top_k: int = 30,
+        exclude_entity_uri: str | None = None,
+        rerank_max_tokens: int = 1000,
+    ) -> GroundingResult:
+        """Ground a source COLUMN against candidate ontology PROPERTIES.
+
+        Thin wrapper over :meth:`ground_table` that shares the entire
+        recall -> exact-name -> LLM-rerank pipeline, but (a) searches the
+        ``entity_type="property"`` embeddings via ``_recall`` and (b) frames the
+        reranker as judging column-vs-property alignment (via
+        :data:`_RERANK_SYSTEM_PROPERTY`). This is the fix for the column-grounding
+        asymmetry: previously columns got embedding-recall only (no exact-name
+        check, no rerank) in ``pipeline.py._pick_winner``, so an identical-name
+        match like ``value`` <-> ``aml:value`` stayed at raw cosine (~0.45),
+        classified ``novel`` and never reached the alignment gate. Routing columns
+        through the same pipeline tables use lets the LLM recognize the match and
+        score it high enough to emit ``owl:equivalentProperty``.
+
+        The returned :class:`GroundingResult` carries the column name in
+        ``source_column`` so :meth:`to_concept_match` populates it correctly.
+        """
+        result = self.ground_table(
+            table_name=column_name,
+            table_description=column_description,
+            columns=[],
+            concept_vector=concept_vector,
+            model_id=model_id,
+            confidence_threshold=confidence_threshold,
+            grounding_mode=grounding_mode,
+            ontology_ids=ontology_ids,
+            top_k=top_k,
+            exclude_entity_uri=exclude_entity_uri,
+            rerank_max_tokens=rerank_max_tokens,
+            _rerank_system=_RERANK_SYSTEM_PROPERTY,
+            _subject_kind="property",
+            _entity_type="property",
+        )
+        # ground_table carries the subject name in source_table; for a column the
+        # caller expects it in source_column. Re-home it.
+        result.source_column = result.source_table
+        result.source_table = ""
+        return result
+
     def ground_table(
         self,
         table_name: str,
@@ -522,6 +613,7 @@ class GroundingService:
         *,
         _rerank_system: str = _RERANK_SYSTEM,
         _subject_kind: str = "table",
+        _entity_type: str = "class",
     ) -> GroundingResult:
         """Ground a source table against the provided ontology pool.
 
@@ -584,7 +676,9 @@ class GroundingService:
         # Exclude its own IRI from the candidate set. Fetch one extra so removing
         # self doesn't shrink the effective top-K.
         recall_k = top_k + 1 if exclude_entity_uri else top_k
-        raw_candidates = self._recall(concept_vector, model_id, ontology_ids, recall_k, subject_name=table_name)
+        raw_candidates = self._recall(
+            concept_vector, model_id, ontology_ids, recall_k, subject_name=table_name, entity_type=_entity_type
+        )
         if exclude_entity_uri:
             _self = exclude_entity_uri.rstrip("/")
             raw_candidates = [c for c in raw_candidates if c.entity_uri.rstrip("/") != _self][:top_k]
@@ -801,6 +895,7 @@ class GroundingService:
         ontology_ids: list[str] | None,
         top_k: int,
         subject_name: str | None = None,
+        entity_type: str = "class",
     ) -> list[GroundingCandidate]:
         """Embedding-based recall: top-K candidates by cosine similarity.
 
@@ -839,7 +934,7 @@ class GroundingService:
                     vector=vector,
                     embedding_type="lexical",
                     model_id=model_id,
-                    entity_type="class",
+                    entity_type=entity_type,
                     ontology_id=oid,
                     top_k=top_k,
                     namespace=self._namespace,

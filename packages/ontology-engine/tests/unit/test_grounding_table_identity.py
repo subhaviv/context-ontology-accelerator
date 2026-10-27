@@ -89,6 +89,20 @@ class _SelectedGroundingService:
             match_type="exact",
         )
 
+    def ground_property(self, *, column_name, ontology_ids, **_kwargs):
+        # Column grounding double: resolve to a fixture property in the scoped
+        # ontology, mirroring ground_table's shape. Keeps the second-pass path
+        # exercisable without a live reranker.
+        oid = ontology_ids[0] if ontology_ids else None
+        return ConceptMatch(
+            source_column=column_name,
+            source_table="",
+            matched_class_uri=f"http://example.test/foundation#{column_name}" if oid else None,
+            matched_ontology_id=oid,
+            similarity=0.99 if oid else None,
+            match_type="exact" if oid else "novel",
+        )
+
     @staticmethod
     def to_concept_match(result):
         return result
@@ -307,14 +321,11 @@ def test_column_grounding_uses_parent_table_identity():
 
     finance_identity = table_identity(finance)
     identity_identity = table_identity(identity)
-    assert pipeline.scoped_ontologies == {
-        finance_identity: "fixture-financialaccount",
-        identity_identity: "fixture-useraccount",
-    }
-    assert pipeline.structural_classes == {
-        finance_identity: "http://example.test/foundation#FinancialAccount",
-        identity_identity: "http://example.test/foundation#UserAccount",
-    }
+    # Columns now route through GroundingService.ground_property with the parent
+    # table's scoped ontology as the pool (replacing the old _get_candidates
+    # scoped-search hook). The invariant — each table's columns ground against
+    # ITS OWN matched ontology, not a crossed one — is observable directly on the
+    # returned column matches' matched_ontology_id.
     column_matches = {match.source_table_identity: match for match in matches if match.source_column}
     assert column_matches[finance_identity].matched_ontology_id == "fixture-financialaccount"
     assert column_matches[identity_identity].matched_ontology_id == "fixture-useraccount"

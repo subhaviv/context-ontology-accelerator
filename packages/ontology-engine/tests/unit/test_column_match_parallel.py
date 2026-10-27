@@ -17,7 +17,7 @@ import pytest
 
 pytestmark = pytest.mark.unit
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from coa_ontology.inducer.schemas import ConceptMatch
 from coa_ontology.inducer.services.pipeline import InductionPipeline, SourceConcept
@@ -31,7 +31,7 @@ def _onehot(k: int) -> list[float]:
     return v
 
 
-def _fake_search_embeddings(*, vector, embedding_type, model_id, entity_type, ontology_id, top_k):
+def _fake_search_embeddings(*, vector, embedding_type, model_id, entity_type, ontology_id, top_k, **_kwargs):
     """Deterministic per-input candidate generator (NOT order-dependent).
 
     Keys off the one-hot position of the concept vector so each column gets a
@@ -85,29 +85,21 @@ def _run_match(worker_count: str, monkeypatch) -> list[ConceptMatch]:
 
     oc = MagicMock()
     oc.search_embeddings.side_effect = _fake_search_embeddings
-    pipeline = InductionPipeline(None, MagicMock(), oc)
+    pipeline = InductionPipeline(None, MagicMock(), oc)  # type: ignore[arg-type]
 
-    # First pass grounds every table as novel (matched_ontology_id=None), so the
-    # column loop takes the grounding-pool fallback path and actually searches.
-    benign_table_match = ConceptMatch(
-        source_column="",
-        source_table="",
-        matched_class_uri=None,
-        matched_ontology_id=None,
-        similarity=None,
-        match_type="novel",
+    # Use a REAL GroundingService (not a mock) in STANDARD mode so both passes run
+    # the real recall → exact-name → classify logic over the mocked search, with
+    # no LLM. Columns now route through ground_property (same pipeline as tables);
+    # STANDARD keeps it LLM-free. Table concepts have all-zero vectors, so their
+    # recall cosine is 0 → novel (preserving the old "grounds every table as novel"
+    # intent and the grounding-pool fallback the column pass exercises).
+    return pipeline.match_concepts(
+        _build_concepts(),
+        confidence_threshold=0.8,
+        model_id="titan",
+        grounding_ontology_ids=["urn:onto:foundational"],
+        grounding_mode="STANDARD",
     )
-
-    with patch("coa_ontology.inducer.services.pipeline.GroundingService") as mock_grounding_cls:
-        grounding_svc = mock_grounding_cls.return_value
-        grounding_svc.to_concept_match.return_value = benign_table_match
-
-        return pipeline.match_concepts(
-            _build_concepts(),
-            confidence_threshold=0.8,
-            model_id="titan",
-            grounding_ontology_ids=["urn:onto:foundational"],
-        )
 
 
 def _project(matches: list[ConceptMatch]) -> list[tuple]:
