@@ -584,12 +584,26 @@ async function deploy(): Promise<void> {
     | string
     | undefined;
   if (beaconM2mClientId?.trim()) {
+    // COA scope groups (JSON array or comma-separated) and the switch that
+    // makes the wrapper authorize machine callers by those scopes.
+    const rawScopeGroups = app.node.tryGetContext("agent_mcp_scope_groups");
+    const scopeGroups: string[] | undefined = Array.isArray(rawScopeGroups)
+      ? rawScopeGroups.map(String)
+      : typeof rawScopeGroups === "string" && rawScopeGroups.trim()
+        ? rawScopeGroups.trim().startsWith("[")
+          ? (JSON.parse(rawScopeGroups) as unknown[]).map(String)
+          : rawScopeGroups.split(",")
+        : undefined;
+    const rawEnforce = app.node.tryGetContext("agent_mcp_enforce_scopes");
+    const enforceScopes = rawEnforce === true || rawEnforce === "true";
     const agentMcp = new AgentMcpStack(app, `${stackPrefix}-agent-mcp`, {
       vpc: network.vpc,
       rolesTable: authnz.rolesTable,
       resourceRoleMappingsTable: authnz.resourceRoleMappingsTable,
       agentCoreAzNames,
       beaconM2mClientId: beaconM2mClientId.trim(),
+      scopeGroups,
+      enforceScopes,
     });
     agentMcp.addDependency(serveAgent); // needs /serve/agent-runtime-arn SSM param
     agentMcp.addDependency(auth); // needs /issuer SSM param (Loom issuer)

@@ -30,6 +30,7 @@ from mcp.server.fastmcp import Context, FastMCP
 from .audit import log_tool_invocation
 from .auth.claims import CallerIdentity, ClaimsExtractionError, extract_caller_identity
 from .auth.grant_resolver import TOOL_CEDAR_ACTION, GrantResolutionError, resolve_grant
+from .auth.system_profile import resolve_system_profile
 from .clients.context_manager import ContextManagerClient
 from .clients.lambda_client import LambdaClient
 from .config import MCPConfig
@@ -128,15 +129,22 @@ async def _resolve_caller_and_profile(
     if config.cm_sigv4:
         # System (agent-MCP wrapper) path. The AgentCore authorizer already
         # validated the caller's M2M token (allowedClients=client_id), so the
-        # caller IS trusted — but it carries no user identity. Build the system
-        # principal from CONFIG (set by the agent-mcp stack from the verified
-        # client), NOT from the request body, so groups come from a validated
-        # identity. serve-agent's own namespace-admission gate + grant resolve
-        # then authorize this system principal against the namespace.
-        system_groups = [g.strip() for g in config.system_profile_groups.split(",") if g.strip()]
+        # caller IS trusted — but it carries no user identity. The system
+        # principal comes from the verified token's COA scopes
+        # (SCL_SYSTEM_SCOPE_PREFIX; or the single legacy profile when unset),
+        # NOT from the request body, so groups come from a validated identity.
+        # serve-agent's own namespace-admission gate + grant resolve then
+        # authorize this system principal against the namespace.
+        system = resolve_system_profile(
+            auth_header,
+            scope_prefix=config.system_scope_prefix,
+            legacy_user_id=config.system_profile_user_id,
+            legacy_groups=config.system_profile_groups,
+        )
+        system_groups = list(system.groups)
         caller = CallerIdentity(
-            user_id=config.system_profile_user_id,
-            agent_id=config.system_profile_user_id,
+            user_id=system.user_id,
+            agent_id=system.user_id,
             namespaces=[],
             roles=system_groups,
             raw_claims={},
@@ -145,7 +153,7 @@ async def _resolve_caller_and_profile(
         # idpGroups (mapped to Group::<group> in the RRM lookup).
         profile = {
             "namespace": namespace_id,
-            "userId": config.system_profile_user_id,
+            "userId": system.user_id,
             "idpGroups": system_groups,
         }
         return caller, profile

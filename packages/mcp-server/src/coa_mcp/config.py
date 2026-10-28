@@ -68,3 +68,11 @@ class MCPConfig(BaseSettings):
     # Only consulted when cm_sigv4 is true.
     system_profile_user_id: str = "beacon-agent"
     system_profile_groups: str = ""  # comma-separated; e.g. "beacon-agents"
+
+    # Scope-based system identity, set by the agent-mcp stack as
+    # SCL_SYSTEM_SCOPE_PREFIX (e.g. "coa/group."). When set, the wrapper
+    # VERIFIES the caller's M2M access token and derives its COA groups from
+    # the token's "<prefix><group>" scopes, granted to the client in the IdP;
+    # a token with no such scope is refused (fail closed). When empty, the
+    # single legacy profile above is used for every caller.
+    system_scope_prefix: str = ""

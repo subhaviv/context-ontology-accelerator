@@ -3,6 +3,7 @@
 
 import * as cdk from "aws-cdk-lib";
 import * as bedrockagentcore from "aws-cdk-lib/aws-bedrockagentcore";
+import * as cognito from "aws-cdk-lib/aws-cognito";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as ec2 from "aws-cdk-lib/aws-ec2";
 import * as iam from "aws-cdk-lib/aws-iam";
@@ -37,6 +38,24 @@ export interface AgentMcpStackProps extends cdk.StackProps {
    * pool out-of-band; see specs/calanthir-pharmaceuticals/beacon-read/).
    */
   readonly beaconM2mClientId: string;
+  /**
+   * COA system groups that machine callers can be granted, one OAuth scope
+   * each. When set, this stack creates a `coa` resource server on the Loom
+   * pool with scopes `group.<g>` (full scope `coa/group.<g>`). An agent is
+   * onboarded by granting its OWN M2M client the scope(s) in the IdP — no COA
+   * change. Supplied via the `agent_mcp_scope_groups` context key (JSON array
+   * or comma-separated string), e.g. ["beacon-agents","data-mapping-agents"].
+   */
+  readonly scopeGroups?: string[];
+  /**
+   * Switch authorization to scopes (`agent_mcp_enforce_scopes=true`). The
+   * authorizer then admits any client holding a `coa/group.*` scope
+   * (`allowedScopes`) instead of the single `allowedClients` entry, and the
+   * container derives each caller's groups from its verified scopes. Deploy
+   * with `scopeGroups` first, grant the scopes to the callers' clients, THEN
+   * enable this, so existing callers are not locked out in between.
+   */
+  readonly enforceScopes?: boolean;
   /**
    * The Loom issuer discovery URL base (e.g.
    * https://cognito-idp.us-east-1.amazonaws.com/us-east-1_NoErXe1QA). The
@@ -132,6 +151,42 @@ export class AgentMcpStack extends SCLStack {
       `${ssmPrefix}/authentication-group-token-name`,
     );
 
+    // ── COA scopes on the Loom pool (machine-caller authorization) ────
+    // COA owns its own `coa` resource server, separate from Loom's `loom`
+    // one. Each scope `coa/group.<g>` grants COA group <g> (Group::<g> in the
+    // RRM tables). Agents are onboarded by granting their M2M client the scope
+    // in the IdP, so the IdP is the single source of truth for who may do what.
+    const SCOPE_RESOURCE_SERVER = "coa";
+    const SCOPE_PREFIX = `${SCOPE_RESOURCE_SERVER}/group.`;
+    const scopeGroups = [
+      ...new Set((props.scopeGroups ?? []).map((g) => g.trim()).filter(Boolean)),
+    ];
+    for (const g of scopeGroups) {
+      // Cognito scope names: printable ASCII without space, quote or backslash.
+      if (!/^[A-Za-z0-9._-]+$/.test(g)) {
+        throw new Error(`Invalid COA scope group name: ${JSON.stringify(g)}`);
+      }
+    }
+    if (props.enforceScopes && scopeGroups.length === 0) {
+      throw new Error(
+        "agent_mcp_enforce_scopes requires agent_mcp_scope_groups (the scopes to admit).",
+      );
+    }
+    if (scopeGroups.length > 0) {
+      new cognito.CfnUserPoolResourceServer(this, "CoaScopesResourceServer", {
+        // Pool id = last path segment of the issuer URL
+        // (https://cognito-idp.<region>.amazonaws.com/<pool-id>).
+        userPoolId: cdk.Fn.select(3, cdk.Fn.split("/", issuerUrl)),
+        identifier: SCOPE_RESOURCE_SERVER,
+        name: "Context Ontology Accelerator",
+        scopes: scopeGroups.map((g) => ({
+          scopeName: `group.${g}`,
+          scopeDescription: `COA system group ${g}`,
+        })),
+      });
+    }
+    const allowedScopes = scopeGroups.map((g) => `${SCOPE_PREFIX}${g}`);
+
     // ── Security Group (HTTPS only; invokes serve-agent via NAT) ──────
     const mcpSg = new ec2.SecurityGroup(this, "AgentMcpSG", {
       vpc: props.vpc,
@@ -175,14 +230,19 @@ export class AgentMcpStack extends SCLStack {
       authorizerConfiguration:
         bedrockagentcore.RuntimeAuthorizerConfiguration.usingJWT(
           `${issuerUrl}/.well-known/openid-configuration`,
-          // allowedClients: validate the M2M token's `client_id`. This is the
-          // key difference from McpStack — an M2M access token carries
-          // client_id (not a user aud), so we check client_id here and leave
-          // allowedAudience undefined. AgentCore AND-verifies configured fields,
-          // so setting ONLY allowedClients admits exactly the beacon-m2m client.
-          [props.beaconM2mClientId],
+          // Scope mode: admit ANY Loom client whose M2M token carries a
+          // coa/group.* scope (allowedScopes; at least one must match). Which
+          // clients hold which scope is decided in the IdP, so onboarding an
+          // agent needs no change here.
+          //
+          // Legacy mode: allowedClients validates the M2M token's `client_id`
+          // (an M2M access token carries client_id, not a user aud).
+          // AgentCore AND-verifies configured fields, so setting ONLY
+          // allowedClients admits exactly the beacon-m2m client.
+          props.enforceScopes ? undefined : [props.beaconM2mClientId],
           // allowedAudience intentionally undefined: M2M tokens have no user aud.
           undefined,
+          props.enforceScopes ? allowedScopes : undefined,
         ),
       networkConfiguration:
         bedrockagentcore.RuntimeNetworkConfiguration.usingVpc(this, {
@@ -226,6 +286,10 @@ export class AgentMcpStack extends SCLStack {
         // so groups are derived from the validated token, not self-asserted.
         SCL_SYSTEM_PROFILE_GROUPS: "beacon-agents",
         SCL_SYSTEM_PROFILE_USER_ID: "beacon-agent",
+        // Scope mode: the container verifies the caller's M2M access token and
+        // derives its COA groups from its coa/group.<g> scopes (userId = the
+        // token's client_id). Unset in legacy mode -> the single profile above.
+        ...(props.enforceScopes ? { SCL_SYSTEM_SCOPE_PREFIX: SCOPE_PREFIX } : {}),
         // Independent JWT verification in claims.py (defense-in-depth behind the
         // AgentCore authorizer). Same Loom issuer; the client is the M2M client.
         JWT_ISSUER_URL: issuerUrl,
