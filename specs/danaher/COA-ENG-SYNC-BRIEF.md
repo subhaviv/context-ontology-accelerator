@@ -4,6 +4,47 @@
 > located-in-code change requests + decisions, not vague asks. Written 2026-10-26, grounded in a read of
 > `packages/ontology-engine` this session. File:line references are from that read — confirm against HEAD.
 
+---
+
+## ⚡ STATUS UPDATE (2026-10-26, late) — the column→property gap is FIXED and VERIFIED end-to-end
+
+The central gap this brief was built around (columns never clearing the grounding gate, so
+`owl:equivalentProperty` count = 0) has been **closed, deployed to coa-dev, and proven live**. Full
+evidence in `prep/RESULT-animl-run.md` §0. Headline:
+
+- **Root cause confirmed** = structural asymmetry: table grounding is a 3-layer pipeline
+  (cosine recall + exact-name check + LLM rerank via `ground_table`); column matching was 1 layer
+  (raw cosine only, no exact-name shortcut, no rerank). So `value`↔`aml:value` scored ~0.45 → novel →
+  never reached the `owl:equivalentProperty` gate at `table_to_ontology.py:787`.
+- **Prototype fix** (`feat/column-property-grounding`, commit `dea2a8b`): new `ground_property()` +
+  `_RERANK_SYSTEM_PROPERTY` in `grounding.py`, `entity_type` threaded through `ground_table`/`_recall`,
+  pipeline.py column second-pass routed through `grounding_svc.ground_property`. 3 test doubles updated
+  + capability test added. **Unit suite: 3009 passed, ruff/mypy green.**
+- **Live proof on coa-dev** (job `25416fff`): **34 `owl:equivalentProperty` axioms** emitted (was 0),
+  covering exact AND semantically non-trivial matches (`value`→`pointValue`, `samplePurpose`→`hasUseCase`,
+  `group`/`type`→`hasSampleCategory`). Accept → published governed ontology → VKG reload (Ontop
+  COMPLETED 1/1) → governed NL query *"...result name, point value, units"* returned **304 rows**,
+  Tier 2 — ontology, Cedar allow + SQL Firewall ok, first-shot SQL.
+
+**So the ASK on column alignment is no longer "can you fix it" — it is: review the prototype, decide
+whether to upstream it, and confirm the design.** Open questions for the team:
+1. **Upstream the prototype?** The branch is on a fork (`github.com/subhaviv/context-ontology-accelerator`).
+   Does eng want it as a PR, or re-implement in their own style? The approach (mirror `ground_table`'s
+   3-layer path for properties) is the load-bearing decision; the exact code is negotiable.
+2. **Two-layer predicate design confirmed?** R2RML materializes under induced predicates
+   (`ind:measurements_value`); `aml:` alignment lives only in `ontology.ttl` as `owl:equivalentProperty`.
+   Intended? And —
+3. **Does the VKG do `owl:equivalentProperty` inference at SPARQL query time?** The NL path (Tier 2
+   text-to-SQL) did NOT need it — grounding fed the SQL generator directly. But for a SPARQL-in-target-terms
+   story we need to know if querying `aml:pointValue` over the VKG resolves via the equivalence bridge, or
+   only `ind:*` predicates resolve. Untested so far.
+
+**The rest of this brief (ASK 1b transformation field, 1c model-stamp, ASK 2 scope decisions) still
+stands as written.** ASK 1a (`relationship`/`reason`) is confirmed ALREADY WIRED on the grounding path
+(3/3 populated) — the only open 1a item is why RIGOR drops it.
+
+---
+
 ## One-line framing
 We're validating whether COA can ground messy source data against a **supplied target ontology** and
 produce **migration-ready mapping recommendations** for a Danaher/IDBS source→target migration use case,
@@ -78,6 +119,21 @@ structured path (ontology-shape validation) but not per-mapping data-validation 
    premise.
 3. **Is there an official eval methodology** beyond `benchmark/golden_compare.py` + the SHACL/HermiT/OntoQA
    validators? We don't want to build a parallel harness if one exists.
+   - **PARTIALLY ANSWERED by reading the repo (2026-10-26):** the sanctioned spine already exists and we
+     plan to REUSE it, not duplicate it:
+     - `packages/ontology-engine/src/coa_ontology/benchmark/golden_compare.py` — induced-vs-golden
+       per-class AND per-property **precision/recall/F1**, tiers exact/aligned/missing, tracks
+       `grounded_to`/`grounded_tier`; driven from `scripts/live_induction_run.py`. This is our
+       coverage+precision scorecard. **Caveat: it scores STRUCTURAL overlap only, not semantic
+       correctness** (that's SME-judged).
+     - SHACL (`validation/routers/validate.py`, `test_shacl_constraints.py`) + HermiT
+       (`test_tier1_hermit_datatype_sanitize.py`) — ontology validity/consistency.
+     - `context-manager/src/coa_serve/tier2/ontop/sparql_validator.py` — Tier-2 SPARQL-over-Ontop
+       validation (relevant to the §Status-update open question on equivalentProperty inference).
+   - **So we build only a thin WRAPPER** (negative-test "flag-don't-guess" rows, 3-run repeatability,
+     the NOT-COA transformation/Mapper stand-in) around these — not a parallel harness. **Confirm**
+     `golden_compare.py` + these validators are the intended eval surface, and whether OntoQA /
+     competency-question SPARQL is wired anywhere we should reuse too.
 4. **The `matched_count` vs `matches.json` discrepancy** we saw on a prior job record (7 vs 13-all-novel) —
    which is authoritative, and is `matched_count` counting something different?
 

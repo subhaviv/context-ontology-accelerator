@@ -29,12 +29,23 @@
 ## PHASE 0 — BEFORE the customer arrives (the week prior) — THE MOST IMPORTANT PHASE
 The onsite fails if setup eats Day 1. Every item here is done and verified beforehand.
 
-- [ ] **AnIML rehearsal passed end-to-end.** Run upload-ontology → Glue → induce (`table_to_ontology`,
-      `grounding_mode=ENHANCED`, `grounding_ontology_ids=[http://www.w3id.org/animl/ontology/]`) →
-      `matches.json` shows **non-null** `matched_class_uri` + `similarity`. This proves the pipeline works
-      on *known-good* data, so any weak result on customer data is clearly THEIR-data-specific, not a COA break.
-- [ ] **1a fix landed** (`relationship` + `reason` wired through `pipeline.py:475`) so the output is already
-      migration-usable — the equivalence flag + rationale present — when the customer first sees it.
+> **✅ DE-RISK UPDATE (2026-10-26):** the full pipeline is now PROVEN end-to-end on coa-dev with the
+> AnIML rehearsal data — including the column→target-property grounding that was the last gap. The
+> column-property-grounding fix shipped (`feat/column-property-grounding`, dea2a8b) and a live run
+> (job `25416fff`) produced **34 `owl:equivalentProperty` column mappings** (was 0), then accept →
+> VKG reload → a governed NL query *"...result name, point value, units"* returned **304 rows**
+> (Tier 2 — ontology, Cedar allow, SQL Firewall ok). Evidence: `prep/RESULT-animl-run.md` §0. This
+> means the "rehearsal passed end-to-end" item below is DONE, and we now have a ready-made,
+> customer-facing DEMO SCRIPT (the 304-row NL query) to open Day 1 with before touching their data.
+
+- [x] **AnIML rehearsal passed end-to-end** — DONE 2026-10-26. upload-ontology → Glue → induce
+      (`table_to_ontology` + ENHANCED) → `matches.json` with non-null `matched_class_uri` + `similarity`,
+      AND 34 column→property `owl:equivalentProperty` axioms, AND accept→VKG→NL-query (304 rows). The
+      pipeline works on known-good data; any weak result on customer data is clearly THEIR-data-specific.
+- [x] **Column→property grounding works** — the fix landed and is verified live (34 axioms). The §0
+      scorecard is the artifact to show.
+- [ ] **1a (`relationship` + `reason`)** — confirmed ALREADY wired on the grounding path (3/3 populated
+      on `table_to_ontology`). No fix needed; only RIGOR drops it (RIGOR isn't used here).
 - [ ] **Eval harness built + tested on AnIML.** Reads `matches.json` + ground-truth tables → scorecard
       (coverage / precision / negative-test flagging / repeatability). Pointed at AnIML now; re-pointed at
       IDBS data on the day. (Transform engine is the "Mapper stand-in" inside the harness — deterministic
