@@ -20,6 +20,7 @@ it again (same Cognito pool) and resolves roles independently.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from urllib.parse import quote
@@ -34,6 +35,24 @@ logger = structlog.get_logger(__name__)
 # TODO: 120s is BELOW serve's RESOLVE_TIMEOUT_S (170s), so this aborts while serve
 # still works — agentic p50 is ~141s. Raising it needs an infra value + MCP retest.
 _INVOKE_TIMEOUT_S = int(os.environ.get("CM_INVOKE_TIMEOUT_S", "120"))
+
+_SESSION_HEADER = "X-Amzn-Bedrock-AgentCore-Runtime-Session-Id"
+
+
+def runtime_session_id(payload: dict) -> str:
+    """Deterministic AgentCore runtime session id for a CM invoke.
+
+    Scoped to (caller userId, namespace) so repeat calls from one caller on one
+    namespace reuse a warm Context Manager microVM, while different callers
+    never share one (an AgentCore session is a microVM-isolation boundary).
+    Hashed so no identity appears in the header; >= 33 chars as AgentCore
+    requires.
+    """
+    profile = payload.get("profile") or {}
+    user_id = str(profile.get("userId") or "")
+    namespace = str(payload.get("namespace") or profile.get("namespace") or "")
+    digest = hashlib.sha256(f"{user_id}|{namespace}".encode()).hexdigest()
+    return f"coa-cm-{digest[:48]}"
 
 
 class ContextManagerClient:
@@ -87,7 +106,7 @@ class ContextManagerClient:
             sigv4=sigv4,
         )
 
-    def _sign_headers(self, body: bytes) -> dict:
+    def _sign_headers(self, body: bytes, extra_headers: dict | None = None) -> dict:
         """Build SigV4-signed headers for the CM invoke (sigv4 path only).
 
         Signs an AWSRequest for the bedrock-agentcore service with this
@@ -110,7 +129,7 @@ class ContextManagerClient:
             method="POST",
             url=self._url,
             data=body,
-            headers={"Content-Type": "application/json"},
+            headers={"Content-Type": "application/json", **(extra_headers or {})},
         )
         self._SigV4Auth(creds, "bedrock-agentcore", self._region).add_auth(aws_req)
         return dict(aws_req.headers)
@@ -121,6 +140,14 @@ class ContextManagerClient:
         The Context Manager's @app.entrypoint is an async generator. AgentCore
         returns responses as text/event-stream (SSE). We use httpx-sse to parse
         the stream per the SSE spec and return the first event's JSON payload.
+
+        Every invoke carries a deterministic AgentCore runtime session id (see
+        :func:`runtime_session_id`). Without one, AgentCore mints a new session
+        -- and so a new microVM and a cold Context Manager start -- per call,
+        which dominated per-query latency. This is TRANSPORT affinity only: the
+        query surface stays stateless, because Context Manager conversation
+        state is keyed on the payload's own ``sessionId`` (never set here), not
+        on this header.
 
         Args:
             payload: JSON body matching InvokeRequest schema.
@@ -134,17 +161,19 @@ class ContextManagerClient:
         Raises:
             ContextManagerError: On HTTP errors or timeouts.
         """
+        session_header = {_SESSION_HEADER: runtime_session_id(payload)}
         if self._sigv4:
             # System path: sign with this process's role; do NOT forward the
             # caller token (serve-agent has no JWT authorizer). The body must be
             # the exact bytes that were signed.
             body = json.dumps(payload).encode("utf-8")
-            headers = self._sign_headers(body)
+            headers = self._sign_headers(body, extra_headers=session_header)
             request_kwargs: dict = {"content": body, "headers": headers}
         else:
             headers = {
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {bearer_token}",
+                **session_header,
             }
             request_kwargs = {"json": payload, "headers": headers}
         try:

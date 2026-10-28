@@ -16,8 +16,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 from coa_mcp.clients.context_manager import (
+    _SESSION_HEADER,
     ContextManagerClient,
     ContextManagerError,
+    runtime_session_id,
 )
 
 
@@ -160,3 +162,54 @@ class TestContextManagerInvoke:
         client._client.aclose = AsyncMock()
         await client.close()
         client._client.aclose.assert_awaited_once()
+
+
+def _payload(user: str, ns: str) -> dict:
+    return {"query": "q", "namespace": ns, "profile": {"userId": user, "groups": [], "namespace": ns}}
+
+
+@pytest.mark.unit
+class TestRuntimeSessionAffinity:
+    """Each invoke carries a deterministic AgentCore session id so repeat calls
+    reuse a warm Context Manager microVM instead of cold-starting one per call."""
+
+    def test_same_caller_and_namespace_get_same_session(self):
+        assert runtime_session_id(_payload("u1", "ns1")) == runtime_session_id(_payload("u1", "ns1"))
+
+    def test_different_callers_or_namespaces_never_share(self):
+        base = runtime_session_id(_payload("u1", "ns1"))
+        assert runtime_session_id(_payload("u2", "ns1")) != base
+        assert runtime_session_id(_payload("u1", "ns2")) != base
+
+    def test_meets_agentcore_length_and_hides_identity(self):
+        sid = runtime_session_id(_payload("alice@example.com", "ns1"))
+        assert len(sid) >= 33
+        assert "alice" not in sid
+
+    @pytest.mark.asyncio
+    async def test_bearer_path_sends_session_header(self):
+        client = _make_client()
+        mock_sse = _mock_sse_response(200, events=[{}])
+        with patch("coa_mcp.clients.context_manager.aconnect_sse", mock_sse):
+            await client.invoke(_payload("u1", "ns1"), "jwt")
+        headers = mock_sse.last_call_kwargs["headers"]
+        assert headers[_SESSION_HEADER] == runtime_session_id(_payload("u1", "ns1"))
+
+    @pytest.mark.asyncio
+    async def test_sigv4_path_signs_the_session_header(self):
+        client = ContextManagerClient(
+            runtime_arn="arn:aws:bedrock-agentcore:us-east-1:123:runtime/cm-abc",
+            region="us-east-1",
+            sigv4=True,
+        )
+        creds = MagicMock()
+        creds.access_key, creds.secret_key, creds.token = "AKIDEXAMPLE", "secret", None
+        client._boto_session = MagicMock()
+        client._boto_session.get_credentials.return_value = creds
+        mock_sse = _mock_sse_response(200, events=[{}])
+        with patch("coa_mcp.clients.context_manager.aconnect_sse", mock_sse):
+            await client.invoke(_payload("beacon-agent", "ns1"), "ignored")
+        headers = mock_sse.last_call_kwargs["headers"]
+        assert headers[_SESSION_HEADER] == runtime_session_id(_payload("beacon-agent", "ns1"))
+        # the header must be inside the SigV4 signature, not appended after it
+        assert _SESSION_HEADER.lower() in headers["Authorization"].lower()
