@@ -1,6 +1,6 @@
 [project]
 name = "coa-vkg"
-version = "0.3.6"
+version = "0.3.8"
 description = "Virtual Knowledge Graph for Context Ontology Accelerator"
 requires-python = ">=3.12"
 
@@ -12,6 +12,9 @@ dependencies = [
     # resolve them like any other package dependency.
     "sqlglot>=20.0.0",
     "rdflib>=7.0.0",
+    # 2026.10.19 is the first certifi bundle without the roots behind the compromised
+    # emSign intermediates. botocore also uses certifi's bundle over its own when installed.
+    "certifi>=2026.10.19",
 ]
 
 [tool.pytest.ini_options]

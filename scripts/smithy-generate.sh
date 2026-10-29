@@ -13,6 +13,31 @@ GENERATED_DIR="$REPO_ROOT/smithy-generated"
 # openapi-generator version for Python server models
 OPENAPI_GENERATOR_VERSION="7.12.0"
 
+# ── Optional Maven Central pull-through cache (CodeArtifact) ─────────────────
+# CI sets CODEARTIFACT_MAVEN_URL so Gradle and the openapi-generator download go
+# through a CodeArtifact cache of Maven Central instead of hitting Maven Central's
+# per-IP rate limit (HTTP 429) from shared runners. Unset (local, forks) -> Maven
+# Central as before. The URL must be a CodeArtifact Maven endpoint, so the token is
+# never sent anywhere else; if no token can be fetched, warn and use Maven Central.
+CODEARTIFACT_URL_RE='^https://([a-z0-9-]+)-([0-9]{12})\.d\.codeartifact\.([a-z0-9-]+)\.amazonaws\.com/maven/[A-Za-z0-9._-]+/$'
+if [ -n "${CODEARTIFACT_MAVEN_URL:-}" ]; then
+    if [[ ! "$CODEARTIFACT_MAVEN_URL" =~ $CODEARTIFACT_URL_RE ]]; then
+        echo "✗ CODEARTIFACT_MAVEN_URL is not a CodeArtifact Maven endpoint (https://<domain>-<account>.d.codeartifact.<region>.amazonaws.com/maven/<repo>/)"
+        exit 1
+    fi
+    if [ -z "${CODEARTIFACT_AUTH_TOKEN:-}" ]; then
+        if CODEARTIFACT_AUTH_TOKEN="$(aws codeartifact get-authorization-token \
+                --domain "${BASH_REMATCH[1]}" --domain-owner "${BASH_REMATCH[2]}" \
+                --region "${BASH_REMATCH[3]}" --query authorizationToken --output text)"; then
+            export CODEARTIFACT_AUTH_TOKEN
+            echo "✓ Using Maven pull-through cache: $CODEARTIFACT_MAVEN_URL"
+        else
+            echo "⚠ Could not get a CodeArtifact token; falling back to Maven Central"
+            unset CODEARTIFACT_MAVEN_URL CODEARTIFACT_AUTH_TOKEN
+        fi
+    fi
+fi
+
 # Fingerprint the inputs BEFORE generating: the stamp written at the end then
 # describes exactly what this run read, even if a model is edited mid-run.
 INPUTS_HASH="$("$REPO_ROOT/scripts/smithy-fingerprint.sh" hash "$REPO_ROOT")"
@@ -66,8 +91,7 @@ for client_dir in "$GENERATED_DIR/control-plane-typescript-client" "$GENERATED_D
     # Replace yarn: parallel syntax with sequential npm run calls
     sed -i.bak 's|"build": "concurrently.*"|"build": "npm run build:cjs \&\& npm run build:es \&\& npm run build:types"|' "$client_dir/package.json"
     rm -f "$client_dir/package.json.bak"
-    (cd "$client_dir" && npm install --loglevel=error && npm run build --loglevel=error)
-    if [ $? -ne 0 ]; then
+    if ! (cd "$client_dir" && npm install --loglevel=error && npm run build --loglevel=error); then
         echo "✗ Failed to build TypeScript client: $client_dir"
         exit 1
     fi
@@ -98,12 +122,51 @@ echo "✓ OpenAPI specs copied"
 echo ""
 echo "Generating Python server models from OpenAPI..."
 
+# Smithy renders @sensitive strings as `format: password`, which openapi-generator
+# turns into pydantic SecretStr. That would mask the value ("**********") when a
+# handler serializes a response, so the Python models are generated from a copy
+# of each spec with that format removed. @sensitive is a client-side logging
+# concern; the published specs and the TypeScript clients keep it.
+PYTHON_CODEGEN_SPEC_DIR="$GENERATED_DIR/openapi/python-codegen"
+strip_password_format() {
+    mkdir -p "$PYTHON_CODEGEN_SPEC_DIR"
+    python3 - "$1" "$PYTHON_CODEGEN_SPEC_DIR/$(basename "$1")" <<'PY'
+import json
+import sys
+
+
+def strip(node):
+    if isinstance(node, dict):
+        if node.get("format") == "password":
+            del node["format"]
+        for value in node.values():
+            strip(value)
+    elif isinstance(node, list):
+        for value in node:
+            strip(value)
+
+
+with open(sys.argv[1]) as src:
+    spec = json.load(src)
+strip(spec)
+with open(sys.argv[2], "w") as dst:
+    json.dump(spec, dst, indent=4)
+PY
+    echo "$PYTHON_CODEGEN_SPEC_DIR/$(basename "$1")"
+}
+
 OPENAPI_GEN_JAR="${OPENAPI_GENERATOR_HOME:-$HOME/.local/share/openapi-generator}/openapi-generator-cli-${OPENAPI_GENERATOR_VERSION}.jar"
 if [ ! -f "$OPENAPI_GEN_JAR" ]; then
     echo "Downloading openapi-generator-cli ${OPENAPI_GENERATOR_VERSION}..."
     mkdir -p "$(dirname "$OPENAPI_GEN_JAR")"
-    curl -sfL -o "$OPENAPI_GEN_JAR" \
-        "https://repo1.maven.org/maven2/org/openapitools/openapi-generator-cli/${OPENAPI_GENERATOR_VERSION}/openapi-generator-cli-${OPENAPI_GENERATOR_VERSION}.jar"
+    OPENAPI_GEN_PATH="org/openapitools/openapi-generator-cli/${OPENAPI_GENERATOR_VERSION}/openapi-generator-cli-${OPENAPI_GENERATOR_VERSION}.jar"
+    if [ -n "${CODEARTIFACT_MAVEN_URL:-}" ]; then
+        # Credentials via a config on stdin, so the token stays out of argv.
+        printf 'user = "aws:%s"\n' "$CODEARTIFACT_AUTH_TOKEN" \
+            | curl -sfL -K - -o "$OPENAPI_GEN_JAR" "${CODEARTIFACT_MAVEN_URL}${OPENAPI_GEN_PATH}"
+    else
+        curl -sfL -o "$OPENAPI_GEN_JAR" "https://repo1.maven.org/maven2/${OPENAPI_GEN_PATH}"
+    fi
     echo "✓ openapi-generator downloaded"
 else
     echo "✓ openapi-generator found at $OPENAPI_GEN_JAR"
@@ -117,7 +180,7 @@ if [ ! -f "$CONTROL_PLANE_SPEC" ]; then
 fi
 
 java -jar "$OPENAPI_GEN_JAR" generate \
-    -i "$CONTROL_PLANE_SPEC" \
+    -i "$(strip_password_format "$CONTROL_PLANE_SPEC")" \
     -g python \
     -o "$GENERATED_DIR/control-plane-python-server" \
     --package-name coa_control_plane_server \
@@ -166,7 +229,7 @@ if [ ! -f "$DATA_LAYER_SPEC" ]; then
 fi
 
 java -jar "$OPENAPI_GEN_JAR" generate \
-    -i "$DATA_LAYER_SPEC" \
+    -i "$(strip_password_format "$DATA_LAYER_SPEC")" \
     -g python \
     -o "$GENERATED_DIR/data-layer-python-server" \
     --package-name coa_data_layer_server \

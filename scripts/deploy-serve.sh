@@ -87,10 +87,16 @@ fi
 # ── CDK Deploy ───────────────────────────────────────────────────────────────
 
 echo ""
+echo "--- Installing locked Node dependencies ---"
+# Same reason as scripts/deploy.sh: install what pnpm-lock.yaml pins, without
+# rewriting it, before pnpm 11+ would run a plain install on its own.
+pnpm install --frozen-lockfile
+
+echo ""
 echo "--- Deploying CDK stack ---"
 
-CONTEXT="--context env=${ENV} --context context_manager_image_uri=${IMAGE_FULL}"
-[ -n "${SCL_PREFIX:-}" ] && CONTEXT="${CONTEXT} --context resource_prefix=${SCL_PREFIX}"
+CONTEXT=(--context "env=${ENV}" --context "context_manager_image_uri=${IMAGE_FULL}")
+[ -n "${SCL_PREFIX:-}" ] && CONTEXT+=(--context "resource_prefix=${SCL_PREFIX}")
 
 APPROVAL="--require-approval=never"
 if [ "${ENV}" = "prod" ] || [ "${ENV}" = "production" ]; then
@@ -98,7 +104,7 @@ if [ "${ENV}" = "prod" ] || [ "${ENV}" = "production" ]; then
 fi
 
 pnpm --filter coa-infra exec cdk deploy "${PREFIX}-${ENV}-serve" \
-  ${CONTEXT} \
+  "${CONTEXT[@]}" \
   ${APPROVAL}
 
 # ── Post-deploy check ────────────────────────────────────────────────────────
@@ -120,6 +126,7 @@ pnpm --filter coa-infra exec cdk deploy "${PREFIX}-${ENV}-serve" \
 echo ""
 echo "--- Post-deploy check ---"
 
+# shellcheck disable=SC2016  # JMESPath backtick literal, not a shell expansion
 RUNTIME_ARN=$(aws cloudformation describe-stacks \
   --stack-name "${PREFIX}-${ENV}-serve" \
   --query 'Stacks[0].Outputs[?OutputKey==`AgentRuntimeArn`].OutputValue' \

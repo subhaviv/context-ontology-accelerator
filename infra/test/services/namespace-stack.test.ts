@@ -6,8 +6,13 @@ import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as ec2 from "aws-cdk-lib/aws-ec2";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import { Template, Match } from "aws-cdk-lib/assertions";
+import { expectIdempotencyWiring } from "../utils/idempotency-assertions";
 import { NamespaceStack } from "../../lib/stacks/services";
 import { DEFAULT_RESOURCE_PREFIX, DEFAULT_ENV } from "../../lib/constants";
+import {
+  LONG_PREFIX_CONTEXT,
+  expectValidAossNames,
+} from "../utils/aoss-name-assertions";
 
 // Mock bundlePython to avoid running pip install and hashing the monorepo root.
 jest.mock("../../lib/utils/python-bundling", () => ({
@@ -83,6 +88,11 @@ describe("NamespaceStack", () => {
         },
       });
     });
+  });
+
+  it("wires only the create-operation Lambda(s) to the idempotency table", () => {
+    // IDEMPOTENCY_TABLE env + Get/Put/Update/DeleteItem on that table only.
+    expectIdempotencyWiring(template, ["-namespace-api", "-grants-api"]);
   });
 
   // Build a fresh NamespaceStack with extra context and return the smus-login
@@ -692,5 +702,32 @@ describe("NamespaceStack", () => {
     expect(fn.Properties.Environment.Variables).not.toHaveProperty(
       "VKG_CLUSTER_ARN",
     );
+  });
+});
+
+describe("NamespaceStack with a long resource_prefix", () => {
+  it("keeps the namespace-deletion OpenSearch Serverless policy name valid", () => {
+    const app = new cdk.App({
+      context: { ...TEST_CONTEXT, ...LONG_PREFIX_CONTEXT },
+    });
+    const depStack = new cdk.Stack(app, "LongPrefixDep");
+    const vpc = new ec2.Vpc(depStack, "Vpc");
+    const lambdaSecurityGroup = new ec2.SecurityGroup(depStack, "LambdaSG", {
+      vpc,
+      allowAllOutbound: true,
+    });
+    const table = (id: string) =>
+      new dynamodb.Table(depStack, id, {
+        partitionKey: { name: "PK", type: dynamodb.AttributeType.STRING },
+      });
+    const template = Template.fromStack(
+      new NamespaceStack(app, "TestNamespaceLongPrefix", {
+        vpc,
+        lambdaSecurityGroup,
+        rolesTable: table("Roles"),
+        resourceRoleMappingsTable: table("RRM"),
+      }),
+    );
+    expectValidAossNames(template);
   });
 });

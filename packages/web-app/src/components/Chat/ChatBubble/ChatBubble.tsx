@@ -20,9 +20,12 @@ import type {
   TraceStep,
   SupportingContentItem,
   GraphContextItem,
+  ExecutionMode,
 } from "@app-types";
 import { LiveSteps } from "./LiveSteps";
 import { EvidencePanel } from "./EvidencePanel";
+import { describePlaygroundError } from "../playground-errors";
+import { useAppI18n } from "../../../i18n/LocaleProvider";
 import "../chat.css";
 
 export type ChatBubbleState = "loading" | "error" | "success";
@@ -42,6 +45,7 @@ export interface ChatBubbleProps {
     resultRows?: Record<string, unknown>[];
     queryUsed?: string;
     sparqlGenerated?: string;
+    executionMode?: ExecutionMode;
     latencyMs?: number;
     guardrailBlocked?: boolean;
     suppressedRows?: number;
@@ -80,6 +84,7 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({
   onRationaleClick,
   onRetry,
 }) => {
+  const { locale, t } = useAppI18n();
   const isUser = role === "user";
 
   if (isUser) {
@@ -99,14 +104,23 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({
         />
       );
     }
+    const errorText = describePlaygroundError(
+      errorDetails?.error,
+      errorMessage || content,
+      locale,
+      t,
+    );
     return (
       <SpaceBetween size="xs">
-        <StatusIndicator type="error">
-          {errorMessage || content}
-        </StatusIndicator>
-        {onRetry && (
+        <StatusIndicator type="error">{errorText.summary}</StatusIndicator>
+        {errorText.detail && (
+          <Box variant="small" color="text-body-secondary">
+            {errorText.detail}
+          </Box>
+        )}
+        {onRetry && errorText.retryable && (
           <Button variant="inline-link" onClick={onRetry}>
-            Retry
+            {t("Retry")}
           </Button>
         )}
       </SpaceBetween>
@@ -122,7 +136,7 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({
     // affordance. StatusIndicator (previously used here) renders plain text and
     // does not parse Markdown.
     return (
-      <Alert type="warning" statusIconAriaLabel="Warning">
+      <Alert type="warning" statusIconAriaLabel={t("Warning")}>
         <div style={{ fontSize: "14px", lineHeight: "20px" }}>
           <TextContent>
             <Markdown remarkPlugins={[remarkGfm]}>
@@ -135,7 +149,9 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({
   }
 
   const suppressedText = response.suppressedRows
-    ? ` (${response.suppressedRows.toLocaleString()} suppressed by SQL Firewall)`
+    ? t(" ({count} suppressed by SQL Firewall)", {
+        count: response.suppressedRows.toLocaleString(locale),
+      })
     : "";
 
   const displayAnswer = response.synthesizedAnswer || content;
@@ -157,15 +173,30 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({
       case "redshift":
         return "Redshift";
       case "jdbc":
-        return "the JDBC engine";
+        return t("the JDBC engine");
       default:
-        return "the query engine";
+        return t("the query engine");
     }
   })();
 
+  // The SPARQL provenance differs by mode. Standard mode's Tier-2 VKG strategy
+  // emits SPARQL that Ontop compiles to SQL, so "(Tier 2)" is accurate there.
+  // Deep Reasoning also emits SPARQL/SQL but through its agentic loop, not the
+  // Tier-2 cascade — labelling its artifacts "(Tier 2)" mislabels them (#1166).
+  const isDeepReasoning = response.executionMode === "deep-reasoning";
   const sqlArtifactCaption = response.sparqlGenerated
-    ? `The SPARQL the LLM emitted (Tier 2) and the SQL ${executionEngineLabel} executed.`
-    : `The SQL ${executionEngineLabel} executed.`;
+    ? isDeepReasoning
+      ? t(
+          "The SPARQL and SQL Deep Reasoning generated and {engine} executed.",
+          { engine: executionEngineLabel },
+        )
+      : t(
+          "The SPARQL the LLM emitted (Tier 2) and the SQL {engine} executed.",
+          {
+            engine: executionEngineLabel,
+          },
+        )
+    : t("The SQL {engine} executed.", { engine: executionEngineLabel });
 
   return (
     <SpaceBetween size="s">
@@ -191,7 +222,7 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({
 
       {(response.sparqlGenerated || response.queryUsed) && (
         <ExpandableSection
-          headerText="Compiled artifacts"
+          headerText={t("Compiled artifacts")}
           headerDescription={sqlArtifactCaption}
           variant="footer"
         >
@@ -238,7 +269,7 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({
               iconName="angle-right"
               onClick={onRationaleClick}
             >
-              Show trace
+              {t("Show trace")}
             </Button>
           </div>
         ) : (
@@ -264,9 +295,11 @@ function ValidationErrorBubble({
     details?: { field: string; type: string }[];
   };
 }) {
+  const { t } = useAppI18n();
+
   return (
     <SpaceBetween size="s">
-      <Badge color="red">Validation error</Badge>
+      <Badge color="red">{t("Validation error")}</Badge>
       <Alert
         type="error"
         header={`${errorDetails.statusCode} ${errorDetails.error}`}
@@ -277,14 +310,15 @@ function ValidationErrorBubble({
             <KeyValuePairs
               columns={2}
               items={errorDetails.details.flatMap((d) => [
-                { label: "Field", value: d.field },
-                { label: "Type", value: d.type },
+                { label: t("Field"), value: d.field },
+                { label: t("Type"), value: d.type },
               ])}
             />
           )}
           <Box variant="small" color="text-body-secondary">
-            Zero compute consumed. Boundary checks: namespace regex, query
-            length, character allowlist.
+            {t(
+              "Zero compute consumed. Boundary checks: namespace regex, query length, character allowlist.",
+            )}
           </Box>
         </SpaceBetween>
       </Alert>
@@ -300,6 +334,7 @@ function ValidationErrorBubble({
 const MAX_DISPLAY_ROWS = 50;
 
 function ResultTable({ rows }: { rows: Record<string, unknown>[] }) {
+  const { t } = useAppI18n();
   if (rows.length === 0) return null;
   const firstRow = rows[0];
   if (!firstRow || Object.keys(firstRow).length === 0) return null;
@@ -325,7 +360,10 @@ function ResultTable({ rows }: { rows: Record<string, unknown>[] }) {
       />
       {truncated && (
         <Box variant="span" fontSize="body-s" color="text-body-secondary">
-          Showing {MAX_DISPLAY_ROWS} of {rows.length} rows
+          {t("Showing {shown} of {total} rows", {
+            shown: MAX_DISPLAY_ROWS,
+            total: rows.length,
+          })}
         </Box>
       )}
     </SpaceBetween>
@@ -341,6 +379,7 @@ function CodeBlock({ code }: { code: string }) {
 }
 
 function CopyButton({ content }: { content: string }) {
+  const { t } = useAppI18n();
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
@@ -355,7 +394,7 @@ function CopyButton({ content }: { content: string }) {
     <Button
       iconName={copied ? "status-positive" : "copy"}
       variant="icon"
-      ariaLabel="Copy answer"
+      ariaLabel={t("Copy answer")}
       onClick={handleCopy}
     />
   );

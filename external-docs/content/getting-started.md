@@ -3,7 +3,7 @@
 ## Prerequisites
 
 - Python 3.12 (pinned via `.python-version` — uv will use this automatically)
-- Node.js 22+ (for CDK CLI and web-app)
+- Node.js 22.23.4+ (for CDK CLI and web-app)
 - [pnpm](https://pnpm.io/) (Node package manager — installed via `mise` or `npm install -g pnpm`)
 - Docker (for local dev services and container image builds)
 - Java 17+ and Gradle (for Smithy codegen)
@@ -61,7 +61,8 @@ All stacks use context-driven configuration via `CoaStack` base class:
 | `resource_prefix`          | `coa`              | Prefix for all resource names                                  |
 | `env`                      | `dev`              | Deployment environment                                         |
 | `project_tag`              | `semantic-context` | AWS `Project` tag value                                        |
-| `vpc_id`                   | (none)             | Import an existing VPC instead of creating one                 |
+| `vpc_id`                   | (none)             | Import an existing VPC instead of creating one. See [Deploying into an existing VPC](deploying.md#deploying-into-an-existing-vpc) |
+| `aoss_vpc_endpoint_id`     | (none)             | Required with `vpc_id`: the VPC's OpenSearch Serverless `aoss-data` interface endpoint |
 | `aoss_max_ocu`             | `96`               | Max OCU capacity for OpenSearch Serverless (indexing + search) |
 | `aoss_min_ocu`             | `2`                | Min OCU capacity for OpenSearch Serverless (indexing + search). Set to `0` for scale-to-zero — see below |
 | `api_throttle_rate_limit`  | `50`               | API Gateway stage requests-per-second rate limit               |
@@ -70,7 +71,7 @@ All stacks use context-driven configuration via `CoaStack` base class:
 | `serve_nl2sql_graph_expand` | (unset — on)    | Tier-2 flat NL→SQL ontology foreign-key expansion; `false` turns it off. See [Deploying](deploying.md#tier-2-nlsql-ontology-foreign-key-expansion) |
 | `serve_nl2sql_graph_expand_max_tables` | (unset — `8`) | How many walked tables the expansion may append to the NL→SQL prompt; `0` appends none |
 
-Resource naming follows `{prefix}-{env}-{name}` (e.g. `coa-dev-neptune`).
+Resource naming follows `{prefix}-{env}-{name}` (e.g. `coa-dev-neptune`). OpenSearch Serverless collection and policy names are limited to 32 characters, so when `{prefix}-{env}-{name}` is longer, the name keeps its leading characters and ends in a short hash of the full name (for example `coa-demo-dev-src-ingestio-3989de`).
 
 #### OpenSearch Serverless capacity and scale-to-zero
 
@@ -153,11 +154,11 @@ Pass context overrides via environment variables:
 # Custom prefix
 SCL_PREFIX=myproj make deploy-dev
 
-# Import existing VPC
-SCL_VPC_ID=vpc-0abc123 make deploy-dev
+# Import existing VPC (with its OpenSearch Serverless aoss-data endpoint)
+SCL_VPC_ID=vpc-0abc123 SCL_AOSS_VPC_ENDPOINT_ID=vpce-0123456789abcdef0 make deploy-dev
 
 # Multiple overrides
-SCL_PREFIX=acme SCL_VPC_ID=vpc-xyz make deploy-dev
+SCL_PREFIX=acme SCL_VPC_ID=vpc-xyz SCL_AOSS_VPC_ENDPOINT_ID=vpce-0123456789abcdef0 make deploy-dev
 ```
 
 #### Deployment architecture
@@ -187,7 +188,7 @@ If you don't edit `.smithy` files, you don't need to run this.
 cd packages/web-app
 cp public/runtime-config.example.json public/runtime-config.json
 # Edit runtime-config.json with your OIDC provider details (authority, clientId)
-pnpm install
+pnpm install --frozen-lockfile
 pnpm dev        # opens at http://localhost:5173
 ```
 
@@ -207,7 +208,7 @@ pnpm dev        # opens at http://localhost:5173
 | `make test-integ`  | Run integration tests                                                            |
 | `make build`       | Build all packages via Nx                                                        |
 | `make deploy-dev`  | Deploy to dev environment via CDK (supports `SCL_PREFIX`, `SCL_VPC_ID` env vars) |
-| `make destroy-dev` | Tear down all dev stacks (AgentCore Runtimes, VKG ECS services, DataZone domain, then `cdk destroy --all`) — see the [Deploying guide](deploying.md), "Tearing Down" section |
+| `make destroy-dev` | Tear down all dev stacks. One run deletes everything that runs continuously; the VPC and two security groups stay until AWS releases the AgentCore ENIs, about 8 hours later, and running it again then deletes them — see the [Deploying guide](deploying.md), "Tearing Down" section |
 | `make docs`        | Serve docs site locally (MkDocs)                                                 |
 
 ## Next Steps

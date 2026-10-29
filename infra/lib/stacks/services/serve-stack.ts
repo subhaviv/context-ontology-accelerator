@@ -12,8 +12,13 @@ import * as ssm from "aws-cdk-lib/aws-ssm";
 import { DockerImageAsset, Platform } from "aws-cdk-lib/aws-ecr-assets";
 import { Construct } from "constructs";
 import type { IAlarmActionStrategy } from "cdk-monitoring-constructs/lib/common/alarm/action";
-import { resolveContext, namespaceTagKey } from "../../context";
+import {
+  resolveContext,
+  namespaceTagKey,
+  guardrailProfileResources,
+} from "../../context";
 import { agentCoreSupportedSubnets } from "../../utils/agentcore-az";
+import { retainAgentCoreSecurityGroup } from "../../utils/agentcore-teardown";
 import { brandEnv } from "../../utils/brand-env";
 import { parseEcrImageUri } from "../../utils/ecr-utils";
 import { bundlePython } from "../../utils/python-bundling";
@@ -189,6 +194,8 @@ export class ServeStack extends SCLStack {
       description: "AgentCore Runtime - Context Manager",
       allowAllOutbound: false,
     });
+    // Its ENIs outlive the runtime by hours; destroy.sh deletes it afterwards.
+    retainAgentCoreSecurityGroup(agentCoreSg);
 
     agentCoreSg.addEgressRule(
       ec2.Peer.ipv4(props.vpc.vpcCidrBlock),
@@ -296,8 +303,8 @@ export class ServeStack extends SCLStack {
         // index.py imports coa_common (resolve_region); include
         // libs/common/src + its runtime deps or the Lambda fails at import
         // with Runtime.ImportModuleError: No module named
-        // 'coa_common'. Bare names (no `>=`) avoid the shell
-        // treating the version spec as an output redirect during local bundling.
+        // 'coa_common'. Each dep is single-quoted in the install command, so a
+        // `>=` spec is not read as a shell redirect.
         fromRoot("libs/common/src"),
       ],
       pipDeps: [
@@ -309,6 +316,8 @@ export class ServeStack extends SCLStack {
         "PyJWT",
         "requests",
         "structlog",
+        // First certifi without the roots behind the compromised emSign intermediates.
+        "certifi>=2026.10.19",
       ],
       architecture: "arm64",
     });
@@ -347,7 +356,7 @@ export class ServeStack extends SCLStack {
     );
 
     new opensearchserverless.CfnAccessPolicy(this, "OSSProxyDataAccess", {
-      name: this.prefixed("proxy-read-only"),
+      name: this.aossName("proxy-read-only"),
       type: "data",
       // NOTE: keep this description in sync with the deployed policy. AOSS's
       // UpdateAccessPolicy API rejects an update that only removes the
@@ -731,6 +740,7 @@ export class ServeStack extends SCLStack {
             `arn:aws:bedrock:*:${account}:inference-profile/*`,
             `arn:aws:bedrock:*::foundation-model/*`,
             `arn:aws:bedrock:${region}:${account}:guardrail/*`,
+            ...guardrailProfileResources(this),
           ],
         }),
       );
@@ -1259,7 +1269,7 @@ export class ServeStack extends SCLStack {
       );
 
       new opensearchserverless.CfnAccessPolicy(this, "OSSServeDataAccess", {
-        name: this.prefixed("serve-read-only"),
+        name: this.aossName("serve-read-only"),
         type: "data",
         // Keep in sync with the deployed policy — AOSS rejects a description-only
         // removal on update (see OSSProxyDataAccess note above).

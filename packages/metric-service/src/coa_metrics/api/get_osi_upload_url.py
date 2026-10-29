@@ -16,11 +16,13 @@ import os
 import uuid
 from typing import Any
 
-import boto3
 import structlog
-from botocore.config import Config
+from coa_common import resolve_region
 from coa_common.logging import setup_logging
 from coa_common.response import api_response, get_caller_identity
+from coa_common.s3 import regional_s3_client
+
+from coa_metrics.api.contract import FILENAME_MAX_LENGTH, FILENAME_MIN_LENGTH, check_string
 
 setup_logging(os.environ.get("LOG_LEVEL", "INFO"))
 logger = structlog.get_logger(__name__)
@@ -39,11 +41,7 @@ _s3_client: Any = None
 def _get_s3_client() -> Any:
     global _s3_client  # noqa: PLW0603
     if _s3_client is None:
-        _s3_client = boto3.client(
-            "s3",
-            region_name=os.environ.get("AWS_REGION", "us-east-1"),
-            config=Config(signature_version="s3v4"),
-        )
+        _s3_client = regional_s3_client(resolve_region())
     return _s3_client
 
 
@@ -71,6 +69,9 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     filename = body.get("filename", "")
     if not filename:
         return api_response(400, {"message": "'filename' is required"})
+    filename_error = check_string(filename, "filename", min_length=FILENAME_MIN_LENGTH, max_length=FILENAME_MAX_LENGTH)
+    if filename_error:
+        return api_response(400, {"message": filename_error})
 
     # Reject path traversal — filename must be a bare name with no separators
     if "/" in filename or "\\" in filename or filename != os.path.basename(filename):
@@ -81,7 +82,7 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     if ext not in ALLOWED_EXTENSIONS:
         return api_response(
             400,
-            {"message": f"Invalid file extension '{ext}'. Allowed: {sorted(ALLOWED_EXTENSIONS)}"},
+            {"message": f"Invalid file extension. Allowed: {sorted(ALLOWED_EXTENSIONS)}"},
         )
 
     # Generate unique S3 key

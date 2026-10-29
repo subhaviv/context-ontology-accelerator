@@ -2,7 +2,7 @@
 name = "coa"
 # Single source of truth is the repo-root VERSION file. Do not edit by hand —
 # bump VERSION and run `make version` (verified by `make lint`).
-version = "0.3.6"
+version = "0.3.8"
 description = "Context Ontology Accelerator for AWS"
 requires-python = ">=3.12"
 license = {text = "Apache-2.0"}
@@ -21,10 +21,13 @@ dev = [
     "moto[dynamodb,sqs]>=5.0",
     # Real-PDF unit tests for the sources preprocessing module (parse + render)
     "pypdfium2>=4.30.0",
-    "pillow>=10.4.0",
+    "pillow>=13.0.0",
 ]
 
 [tool.uv]
+# uv < 0.13.4 embeds roots that trust the compromised eMudhra/emSign intermediates
+# (GHSA-hq85-5cpj-mr62); refuse to run with an older uv instead of fetching wheels with it.
+required-version = ">=0.13.4"
 # Pin transitive dependencies up to the patched floor for security advisories
 # that are only reachable through dev/test tooling (no direct declaration).
 #   werkzeug: pulled by moto (AWS mocking, dev group only). CVE-2026-102598
@@ -34,9 +37,13 @@ dev = [
 #   un-sandboxed Jinja2 render in ReferenceFileSystem (Kerchunk) — SSTI/RCE on
 #   attacker-controlled references JSON (GHSA, HIGH). 2026.6.0 is the patched
 #   floor; constrained here since fsspec is transitive, not directly declared.
+#   filelock: pulled by huggingface-hub (via tokenizers). 3.20.4-4.2.0 let a
+#   local user who can write the lock directory redirect ReadWriteLock's SQLite
+#   onto other files (GHSA-v4x8-3wr5-3wq8, HIGH). 4.2.1 is the patched floor.
 constraint-dependencies = [
     "werkzeug>=3.1.9",
     "fsspec>=2026.6.0",
+    "filelock>=4.2.1",
 ]
 
 [tool.uv.workspace]

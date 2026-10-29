@@ -34,9 +34,11 @@ import {
   namespaceTagKey,
   resolveContext,
   resolveLambdaReservedConcurrency,
+  guardrailProfileResources,
 } from "../../context";
 import { Paths, fromRoot } from "../../paths";
 import { bundlePython } from "../../utils/python-bundling";
+import { grantIdempotencyTable } from "../../utils/idempotency";
 import { bedrockModelArn } from "../../utils/bedrock-utils";
 import { NetworkStack } from "../foundation/network-stack";
 import { StorageStack } from "../foundation/storage-stack";
@@ -1355,6 +1357,7 @@ export class SourcesStack extends SCLStack {
         actions: ["bedrock:ApplyGuardrail"],
         resources: [
           `arn:aws:bedrock:${this.region}:${this.account}:guardrail/*`,
+          ...guardrailProfileResources(this),
         ],
       }),
     );
@@ -2259,6 +2262,7 @@ export class SourcesStack extends SCLStack {
         actions: ["bedrock:ApplyGuardrail"],
         resources: [
           `arn:aws:bedrock:${this.region}:${this.account}:guardrail/*`,
+          ...guardrailProfileResources(this),
         ],
       }),
     );
@@ -2304,7 +2308,7 @@ export class SourcesStack extends SCLStack {
       this,
       "SourcesOSSDataAccessPolicy",
       {
-        name: this.prefixed("src-ingestion-access"),
+        name: this.aossName("src-ingestion-access"),
         type: "data",
         policy: JSON.stringify([
           {
@@ -2331,10 +2335,9 @@ export class SourcesStack extends SCLStack {
                 ],
               },
             ],
-            Principal: [
-              kgBuildTaskDef.taskRole.roleArn,
-              `arn:aws:iam::${this.account}:root`,
-            ],
+            // Named roles only: an account-root principal would admit every
+            // in-account role with aoss:APIAccessAll.
+            Principal: [kgBuildTaskDef.taskRole.roleArn],
           },
         ]),
       },
@@ -2978,6 +2981,8 @@ export class SourcesStack extends SCLStack {
     });
 
     this.sourcesTable.grantReadWriteData(sourcesApiFn);
+    // CreateSource is retry-safe with a caller-supplied clientToken.
+    grantIdempotencyTable(this, sourcesApiFn);
     // Registration verifies that a caller-named bucket carries the
     // `{prefix}:namespace` tag authorizing this namespace, so the customer is told
     // at create time instead of discovering it as a failed scan. Tag metadata

@@ -27,24 +27,32 @@ The Playground streams responses in real-time via SSE (Server-Sent Events), show
 ### REST API
 
 `POST /namespaces/{namespaceId}/query` with a natural-language `query` and
-optional `options` — see **Query** in the [API Reference](#/api-reference)
-for the full request/response schema.
+optional members alongside it in the same JSON body (top-level fields, not
+nested under an `options` object) — see **Query** in the
+[API Reference](#/api-reference) for the full request/response schema. A member
+with the wrong type or outside its documented range is rejected with `400`
+rather than clamped or ignored.
 
 Options:
 - `execute: false` — return the generated SQL without executing it
-- `tierOverride` — force a specific resolution tier (1, 2, or 3)
+- `tierOverride` — force a specific resolution tier (integer 1–3)
 - `mode` — choose the execution policy: the Standard tier cascade or Deep
   Reasoning (see below)
 - `strategy` — choose which Tier-2 engine answers a structured query (see below)
-- `maxResults` — limit result rows
+- `maxResults` — limit result rows (1–10000)
 - `includeSupporting` — include supporting context in the response
 - `includeDebugInfo` — include the generated `queryUsed` (SQL) and
   `sparqlGenerated` fields in the response. **Off by default.** ⚠️ Security:
-  these fields expose internal schema (table and column names, joins). Only
-  enable for trusted callers or development environments.
-- `timeoutMs` — cap the server-side resolution budget for this request. Only ever
-  *lowers* the budget below the transport ceiling (a value above the ceiling is
-  clamped); non-positive/invalid values are ignored.
+  these fields expose internal schema (table and column names, joins), so the
+  flag is honoured only for a platform admin or a namespace owner, maintainer
+  or data steward of the queried namespace. For any other caller the query
+  still succeeds, with both fields omitted.
+- `dimensions` — dimension filters, a list of up to 100 `{name, value}`
+  objects (`name` 1–256 characters and unique case-insensitively, `value` up
+  to 4000 characters, `operator` only `=`)
+- `timeoutMs` — cap the server-side resolution budget for this request, an
+  integer from 1 to 29000 (the REST ceiling). It can only *lower* the budget;
+  a value outside that range is rejected with `400`.
 
 > **⚠️ REST has a hard 29-second timeout.** The REST endpoint runs behind API
 > Gateway, whose integration timeout is a fixed **29 s** (`timeoutInMillis: 29000`)
@@ -386,6 +394,24 @@ schema-qualified names (`"public"."customers"`) for any name two sources share, 
 queries then resolve normally. Namespaces with no such collision are unaffected and
 need no re-induction.
 
+On the NL→SQL strategy, the SQL writer is shown every same-named table, each with
+the database it lives in where serve can place it, so it can name the one the question
+means (`crm.customers`); such a reference runs against that table. A query that still
+names the table bare, or qualifies it with a database or catalog that holds none of the
+candidates, is refused, and the error lists the candidates, e.g.
+`table reference 'customers' is ambiguous: it could be any of crm.customers,sales.customers`.
+
+Retrieval keeps only a few tables per question, so it can return one copy of a name
+that several of the namespace's Glue databases hold (one `ds` table per study, say).
+Serve checks which of the namespace's own databases hold each name the writer is
+shown. If some of them did not reach the prompt, the writer is told every database
+that holds the name, with none singled out, so a question that names one of them
+(`sdtm_cs101.ds`) runs against that one. A bare reference is refused, and the error
+lists every database that holds the name, not only the retrieved ones. This keeps one copy's rows from being
+returned as the answer for all of them. A name held by one database only is
+unaffected, and so is a namespace with a single Glue database. Tables in JDBC sources
+cannot be listed this way, so only Glue databases are counted.
+
 ### Tier 3 — Knowledge Retrieval
 
 **When**: The question requires unstructured knowledge or graph traversal
@@ -423,6 +449,13 @@ fails closed: if the caller's grants cannot be read, the request is rejected
 (`502`, retryable) rather than served, and in production a caller with no resolved
 roles is denied.
 
+In the web console's Playground, an error is shown by its error type in the
+console's language (for example 「アクセスが拒否されました」 in Japanese), with the
+server's own message underneath when it adds detail, such as the table names in
+an ambiguous-reference refusal. Outcomes that would fail the same way again — an
+access deny, an ambiguous reference, a missing namespace, no result — are shown
+without a **Retry** button; timeouts and other transient errors keep it.
+
 > **Note:** `DescribeSchema` and `ListMetrics` do not pass through the Context
 > Manager. They are authorized by the API Gateway Cedar authorizer (and, for MCP
 > callers, by a per-tool Cedar check) against the same namespace roles.
@@ -452,7 +485,121 @@ indexed document. `sourceDocumentName` is the human-readable original file
 name for display. Names are not unique: two document sources can contain a file
 with the same name while returning different `sourceDocumentId` values.
 
-`DescribeSchema` returns the classes and properties currently loaded into the namespace's ontologies, so a caller can find the entities available before writing a query. Optional query params: `includeProperties` (default `true`) to include class properties, and `maxResults` to cap the class count. The same schema is what the MCP `describe_schema` tool exposes — REST and MCP read from one source.
+`KBSearch` accepts `topK` (1–100, default 10) and `minScore`. `sourceFilter`
+and `entityFilter` are not supported yet: a non-empty value is rejected with
+`400` rather than returning unfiltered chunks.
+
+`GraphTraverse` requires `startUri`, an absolute `http(s)` IRI or a `urn:` name
+of at most 2048 characters. `maxDepth` (1–5, default 2; depths above 2 currently
+traverse 2 hops) and `maxResults` (1–1000 entities, default 100) are applied.
+`direction` and `relationshipFilter` are validated but not yet applied:
+traversal currently follows every relationship in both directions.
+
+Query responses expose graph evidence in `graphContext`, using the existing
+Smithy shape:
+
+```json
+{
+  "graphContext": {
+    "entities": [
+      {
+        "uri": "https://example.com/entities/acme",
+        "label": "Acme",
+        "type": "https://example.com/classes/Company",
+        "properties": {
+          "supportingStatements": "[\"Acme acquired Example Corp.\"]"
+        }
+      }
+    ],
+    "relationships": [
+      {
+        "sourceUri": "https://example.com/entities/acme",
+        "predicateUri": "https://example.com/predicates/acquired",
+        "targetUri": "https://example.com/entities/example-corp",
+        "predicateLabel": "acquired"
+      }
+    ]
+  }
+}
+```
+
+`properties` is a string-valued map. Its reserved `supportingStatements` value
+is therefore a JSON-encoded array of graph-only evidence strings; decode it
+before use, for example with
+`JSON.parse(entity.properties.supportingStatements)`. These statements are
+retrieved text, so `includeSupporting: false` omits them along with
+`supportingContent`; the entities, their other properties and `relationships`
+are still returned. The service retains at
+most 100 statements per entity, limits each statement to 1,000 characters and
+2,000 UTF-8 bytes, and caps all statements in an assembled graph context at
+4,000 characters and 6,000 UTF-8 bytes. Statements that exceed a bound are
+truncated without splitting a UTF-8 code point and may end with an ellipsis. The
+same bounds are applied when a stored session is restored, so a record written
+before they existed is returned bounded too.
+
+An agentic edge-typed traversal reads at most 100 supporting-statement rows per
+tool invocation. The graph query returns one statement per row under a hard
+limit instead of aggregating an entity's unbounded statement fan-out. Reaching
+that limit, or the character/UTF-8 byte budget above, adds a degraded source and
+sets the response `partial` flag.
+
+A single `graphContext` carries at most 200 entities and 500 relationships.
+Agentic reasoning retains at most 10 relationships per entity in its bounded
+working set. Reaching that working-set cap, or discarding graph evidence while
+assembling the response (over the 200-entity or 500-relationship bound, an
+entity with no `uri`, or a relationship the graph carries with no predicate
+identifier), adds a `metadata.degradedSources` entry and sets `partial` to
+`true`; response-assembly drops also record a `degraded` processing-trace step.
+An empty `relationships` list with no such entry means no relationship was
+found.
+
+Session history uses a tighter persistence budget than the live response and
+retains at most 200 relationships. If that count cap or envelope-size compaction
+discards relationships, the restored turn is marked `partial` and includes a
+`session_persistence` entry in `metadata.degradedSources`; it is never presented
+as complete.
+
+Tier-3 responses now carry relationships only in the top-level
+`graphContext.relationships` list, as the contract defines. The previous runtime
+nested them under each entity instead, so a client that read entity-nested
+relationships has to read the top-level list.
+
+A property-graph edge may carry only a human-readable predicate string. Such an
+edge is still returned, with a stable tenant-scoped synthetic `predicateUri` in
+the `urn:coa:graph-predicate:` scheme derived from that string. Use it as an
+opaque identity for correlating edges within one namespace; it is not an ontology
+predicate IRI, and the readable form remains in `predicateLabel`. The identifier
+uses collision-resistant hashes; like any hash-derived identifier, it is not a
+mathematical uniqueness guarantee.
+
+### Tier-3 `supportingContent`: renamed fields and deprecated aliases
+
+The documented names are unchanged, but the Tier-3 runtime previously emitted two
+fields that were never in the contract. Where it sent `sourceDoc` and `label`, it
+now also sends the contract's `sourceDocumentId` and `sourceDocumentName`:
+
+| Previous runtime field | Read this instead |
+|---|---|
+| `sourceDoc` | `sourceDocumentId` |
+| `label` | `sourceDocumentName` |
+
+`sourceDoc` and `label` are still emitted, unchanged, as **deprecated aliases** in
+the first release that contains this change, so a client that reads them keeps
+rendering citations. Migrate to `sourceDocumentId` / `sourceDocumentName` during
+that release; the aliases are removed in the release that follows it, and that
+release's notes will say so.
+
+Internal Python names such as `supporting_statements`, `source_doc`, and
+`source_doc_name` are not wire fields and never were.
+
+On the standard (non-agentic) Tier-3 paths, `supportingContent` lists exactly the
+document chunks the answer was generated from: at most five, in retrieval order.
+When a retrieval guardrail is configured, the first five retrieved chunks are
+screened and a chunk it blocks is dropped, not replaced, so a response can carry
+fewer than five entries even when more were retrieved. `graphContext` likewise never carries a
+supporting statement the retrieval guardrail blocked or did not screen.
+
+`DescribeSchema` returns the classes and properties currently loaded into the namespace's ontologies, so a caller can find the entities available before writing a query. Optional query params: `includeProperties` (default `true`) to include class properties, and `maxResults` (1–1000) to cap the class count. The same schema is what the MCP `describe_schema` tool exposes — REST and MCP read from one source.
 
 See these operations in the [API Reference](#/api-reference) for their full request/response schemas.
 

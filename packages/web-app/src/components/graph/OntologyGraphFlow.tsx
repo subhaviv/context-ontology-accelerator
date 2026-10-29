@@ -38,6 +38,7 @@ import {
   type Edge,
   type NodeTypes,
   type NodeChange,
+  type AriaLabelConfig,
   Handle,
   Position,
   ReactFlowProvider,
@@ -56,6 +57,8 @@ import {
 } from "./layout";
 import { useLiveForceSimulation } from "./useLiveForceSimulation";
 import { projectEdgeLabel } from "./labelProjection";
+import { useAppI18n } from "../../i18n/LocaleProvider";
+import type { AppMessage } from "../../i18n/appMessages";
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -243,7 +246,7 @@ const KIND_COLORS: Record<string, { bg: string; border: string }> = {
   unknown: { bg: "#f3f4f6", border: "#9ca3af" },
 };
 
-const LEGEND_ITEMS = [
+const LEGEND_ITEMS: Array<{ kind: string; label: AppMessage }> = [
   { kind: "class", label: "Novel class" },
   { kind: "grounded", label: "Grounded class" },
   { kind: "object-property", label: "Relationship" },
@@ -305,6 +308,7 @@ const HoverContext = createContext<{
 }>({ hoveredId: null, neighbourIds: null, setHoveredEdgeId: () => {} });
 
 function OntologyNode({ data }: { data: GraphNodeData }) {
+  const { t } = useAppI18n();
   const colors = KIND_COLORS[data.kind] ?? KIND_COLORS.unknown;
   const { hoveredId, neighbourIds } = useContext(HoverContext);
   const dimmed =
@@ -314,7 +318,9 @@ function OntologyNode({ data }: { data: GraphNodeData }) {
       className="coa-graph-node"
       title={
         data.hasChildren
-          ? `${data.label} — double-click to expand sub-classes`
+          ? t("{label} — double-click to expand sub-classes", {
+              label: data.label,
+            })
           : data.label
       }
       style={{
@@ -629,6 +635,19 @@ function OntologyGraphFlowInner({
   // crossed, not on every pan/zoom frame.
   const showEdgeLabels = useStore((s) => s.transform[2] >= EDGE_LABEL_MIN_ZOOM);
 
+  const { t } = useAppI18n();
+  // React Flow's own control and minimap labels are English defaults; route
+  // them through the catalogue so screen readers hear the UI language.
+  const ariaLabelConfig: Partial<AriaLabelConfig> = useMemo(
+    () => ({
+      "controls.ariaLabel": t("Control Panel"),
+      "controls.zoomIn.ariaLabel": t("Zoom In"),
+      "controls.zoomOut.ariaLabel": t("Zoom Out"),
+      "controls.fitView.ariaLabel": t("Fit View"),
+      "minimap.ariaLabel": t("Mini Map"),
+    }),
+    [t],
+  );
   const flowNodes: OntologyFlowNode[] = useMemo(
     () =>
       visibleNodes.map((n) => ({
@@ -1266,6 +1285,7 @@ function OntologyGraphFlowInner({
           maxZoom={2.5}
           nodesDraggable
           proOptions={{ hideAttribution: true }}
+          ariaLabelConfig={ariaLabelConfig}
         >
           <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
           <Controls showInteractive={false} />
@@ -1273,8 +1293,10 @@ function OntologyGraphFlowInner({
             <button
               type="button"
               onClick={toggleFullscreen}
-              aria-label={isFullscreen ? "Exit full screen" : "Full screen"}
-              title={isFullscreen ? "Exit full screen" : "Full screen"}
+              aria-label={
+                isFullscreen ? t("Exit full screen") : t("Full screen")
+              }
+              title={isFullscreen ? t("Exit full screen") : t("Full screen")}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -1289,7 +1311,7 @@ function OntologyGraphFlowInner({
               }}
             >
               <span aria-hidden="true">{isFullscreen ? "🡖" : "⛶"}</span>
-              {isFullscreen ? "Exit full screen" : "Full screen"}
+              {isFullscreen ? t("Exit full screen") : t("Full screen")}
             </button>
           </Panel>
           <MiniMap
@@ -1330,7 +1352,7 @@ function OntologyGraphFlowInner({
                       display: "inline-block",
                     }}
                   />
-                  <span>{label}</span>
+                  <span>{t(label)}</span>
                 </div>
               ))}
               {isolated.size > 0 && (
@@ -1345,8 +1367,13 @@ function OntologyGraphFlowInner({
                     checked={showIsolated}
                     onChange={({ detail }) => setShowIsolated(detail.checked)}
                   >
-                    Show {isolated.size} standalone{" "}
-                    {isolated.size === 1 ? "class" : "classes"}
+                    {isolated.size === 1
+                      ? t("Show {count} standalone class", {
+                          count: isolated.size,
+                        })
+                      : t("Show {count} standalone classes", {
+                          count: isolated.size,
+                        })}
                   </Toggle>
                 </div>
               )}

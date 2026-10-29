@@ -275,6 +275,7 @@ async function deploy(): Promise<void> {
   // from valueForStringParameter, so the dependency must be explicit or a fresh
   // account deploys the namespace stack before those params exist.
   smusDomain.addDependency(storage); // needs /opensearch/endpoint + /opensearch/collection-name
+  smusDomain.addDependency(authnz); // /authnz/idempotency-table-name (namespace + grants APIs)
 
   // ── Service stacks ─────────────────────────────────────────────────
   const metricService = new MetricServiceStack(
@@ -293,6 +294,7 @@ async function deploy(): Promise<void> {
   );
   // Metric validation reads SMUS catalog via SSM-resolved params.
   metricService.addDependency(smusDomain); // /namespace/namespaces-table-name, /smus/domain-id, /smus/dz-project-access-role-arn
+  metricService.addDependency(authnz); // /authnz/idempotency-table-name
 
   const api = new ApiStack(app, `${stackPrefix}-api`, {
     allowedOrigin,
@@ -443,6 +445,7 @@ async function deploy(): Promise<void> {
   sources.addDependency(storage); // needs Neptune/OpenSearch endpoints
   // No dependency on serve: DbConnectorFn reads the serve runtime role ARN from SSM at runtime.
   sources.addDependency(guardrail); // reads /bedrock/retrieval-guardrail-{id,version} at deploy time
+  sources.addDependency(authnz); // /authnz/idempotency-table-name
 
   api.addDependency(sources);
   api.addDependency(metricService);
@@ -478,6 +481,8 @@ async function deploy(): Promise<void> {
     // construct properties, so this stack has no direct reference into the
     // auth stack's resource tree (see PR for the export-lock this avoids).
     isCognitoMode: config.idpType !== IdpType.OIDC,
+    federatedIdentityProviderNames:
+      IdpAuthenticationStack.federatedProviderNames(authProps),
     apiEndpoint: api.api.url,
     apiRestApiId: api.api.restApiId,
     apiStageName: api.api.deploymentStage.stageName,
@@ -523,6 +528,7 @@ async function deploy(): Promise<void> {
   });
   ontology.addDependency(smusDomain); // /namespace/namespaces-table-name, /smus/dz-project-access-role-arn
   ontology.addDependency(sources); // /sources/sources-table-name
+  ontology.addDependency(authnz); // /authnz/idempotency-table-name (api-proxy StartInduction)
 
   // ApiStack reads /ontology-engine/api-fn-arn via SSM (CFN dynamic ref).
   api.addDependency(ontology);
@@ -548,6 +554,12 @@ async function deploy(): Promise<void> {
   });
   mcp.addDependency(serve); // needs CM runtime-arn SSM param
   mcp.addDependency(auth); // needs /issuer, /userpool-client-id, /mcp-client-id SSM params
+  // web reads ${ssmPrefix}/mcp/runtime-arn (published by mcp) to surface the MCP
+  // endpoint in runtime-config.json for the console's MCP page (#1166). CDK can't
+  // infer the ordering from valueForStringParameter, so declare it explicitly —
+  // otherwise a fresh-account deploy can write runtime-config.json before the
+  // parameter exists.
+  web.addDependency(mcp);
 
   // ── Agent read path (Beacon as a system) ───────────────────────────
   // serve-agent: a SECOND Context Manager runtime with IAM SigV4 inbound auth

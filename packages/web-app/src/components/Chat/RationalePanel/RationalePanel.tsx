@@ -17,13 +17,15 @@ import type { StepsProps } from "@cloudscape-design/components/steps";
 import type { TraceStep, ChatMessage } from "@app-types";
 import { formatStepDetail } from "./format-step-detail";
 import {
-  STEP_DISPLAY_NAMES,
   CEDAR_STEP_IDS,
   FIREWALL_STEP_IDS,
   GUARDRAIL_STEP_IDS,
-  humanizeStepId,
+  localizeDisplayStep,
   mapTraceStatus,
+  tier2Title,
 } from "@components/Chat/step-labels";
+import type { AppMessage } from "../../../i18n/appMessages";
+import { useAppI18n, type AppTranslate } from "../../../i18n/LocaleProvider";
 
 export interface RationalePanelProps {
   message: ChatMessage | undefined;
@@ -31,12 +33,17 @@ export interface RationalePanelProps {
   userQuery?: string;
 }
 
-const TIER_LABELS: Record<number, string> = {
+const TIER_LABELS: Readonly<Record<number, AppMessage>> = {
   1: "Tier 1 — Metric Match",
   2: "Tier 2 — Structured Query",
   2.5: "Tier 2.5 — Structured Query",
   3: "Tier 3 — Knowledge Retrieval",
 };
+
+// Deep Reasoning is an execution MODE, not a tier. It resolves through the
+// tier-3 assembly path but must be labelled by its mode, otherwise it reads
+// identically to a Standard cascade that happened to resolve at tier 3 (#1166).
+const DEEP_REASONING_LABEL = "Deep Reasoning";
 
 // Only surface a parallel-savings hint when it's material — for fast sources
 // the delta is just the quicker source's time and adds noise, not insight.
@@ -47,15 +54,27 @@ const MIN_NOTABLE_SAVINGS_MS = 500;
  * tier2Title so the header and the execution-plan section title never disagree
  * about which strategy/strategies ran.
  */
-function resolutionLabel(tier: number, trace: TraceStep[]): string {
-  if (tier === 2) {
-    return tier2Title(trace);
+function resolutionLabel(
+  t: AppTranslate,
+  tier: number,
+  trace: TraceStep[],
+  executionMode?: string,
+): string {
+  // Mode wins over tier: a Deep Reasoning answer resolves at tier 3 but is not
+  // Standard mode's Tier-3 result (#1166). Standard / unset falls through to the
+  // tier label below.
+  if (executionMode === "deep-reasoning") {
+    return t(DEEP_REASONING_LABEL);
   }
-  return TIER_LABELS[tier] ?? `Tier ${tier}`;
+  if (tier === 2) {
+    return tier2Title(t, trace);
+  }
+  const label = TIER_LABELS[tier];
+  return label ? t(label) : t("Tier {tier}", { tier });
 }
 
-function formatStepName(name: string): string {
-  return STEP_DISPLAY_NAMES[name] ?? humanizeStepId(name);
+function formatStepName(t: AppTranslate, name: string): string {
+  return localizeDisplayStep(t, name);
 }
 
 function formatDuration(ms: number): string {
@@ -64,15 +83,33 @@ function formatDuration(ms: number): string {
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
+// Confidence display bands. These are DISPLAY bands only — they are
+// deliberately independent of the Tier-2→Tier-3 routing filter
+// (EMPTY_RESULT_CONFIDENCE_FLOOR = 0.3 in the orchestrator), which is an
+// internal junk filter, never a user-facing trust bar (#1166). The cutoffs
+// reuse the long-standing badge-colour thresholds so the word and the colour
+// can never disagree.
+const CONFIDENCE_HIGH_MIN = 0.8;
+const CONFIDENCE_MEDIUM_MIN = 0.5;
+
+type ConfidenceBand = "High" | "Medium" | "Low";
+
+function confidenceBand(score: number): ConfidenceBand {
+  if (score >= CONFIDENCE_HIGH_MIN) return "High";
+  if (score >= CONFIDENCE_MEDIUM_MIN) return "Medium";
+  return "Low";
+}
+
 function confidenceBadgeColor(
   score: number,
 ): "green" | "severity-medium" | "red" {
-  if (score >= 0.8) return "green";
-  if (score >= 0.5) return "severity-medium";
+  const band = confidenceBand(score);
+  if (band === "High") return "green";
+  if (band === "Medium") return "severity-medium";
   return "red";
 }
 
-const STATUS_LABELS: Record<string, string> = {
+const STATUS_LABELS: Readonly<Record<string, AppMessage>> = {
   success: "Resolved",
   ok: "Resolved",
   allow: "Resolved",
@@ -91,14 +128,15 @@ const STATUS_LABELS: Record<string, string> = {
   residual_qualifier_bypass: "Skipped",
 };
 
-function getStepDetail(step: TraceStep): React.ReactNode {
-  const detail = formatStepDetail(step.step, step.detail);
-  const statusLabel = STATUS_LABELS[step.status] ?? step.status;
+function getStepDetail(t: AppTranslate, step: TraceStep): React.ReactNode {
+  const detail = formatStepDetail(step.step, step.detail, t);
+  const statusMessage = STATUS_LABELS[step.status];
+  const statusLabel = statusMessage ? t(statusMessage) : step.status;
   // Parallel-group wrappers (e.g. t3.retrieve) carry their elapsed time in
   // wallMs, not durationMs — prefer it and label it as wall-clock time.
   const timeLabel =
     step.wallMs != null
-      ? `${formatDuration(step.wallMs)} wall`
+      ? t("{duration} wall", { duration: formatDuration(step.wallMs) })
       : formatDuration(step.durationMs);
 
   return (
@@ -121,11 +159,12 @@ export const RationalePanel: React.FC<RationalePanelProps> = ({
   sessionId,
   userQuery,
 }) => {
+  const { t } = useAppI18n();
   const navigate = useNavigate();
   if (!message || !message.response) {
     return (
       <Box padding="l" textAlign="center" color="text-body-secondary">
-        Select a response to view its rationale.
+        {t("Select a response to view its rationale.")}
       </Box>
     );
   }
@@ -146,24 +185,24 @@ export const RationalePanel: React.FC<RationalePanelProps> = ({
         columns={2}
         items={[
           {
-            label: "Resolution",
-            value: resolutionLabel(result.tier, trace),
+            label: t("Resolution"),
+            value: resolutionLabel(t, result.tier, trace, result.executionMode),
           },
-          { label: "Latency", value: `${latencyMs}ms` },
+          { label: t("Latency"), value: `${latencyMs}ms` },
           {
-            label: "Model",
+            label: t("Model"),
             value: modelId ?? "—",
           },
           {
-            label: "Principal",
+            label: t("Principal"),
             value: principal ?? "—",
           },
           {
-            label: "Namespace",
+            label: t("Namespace"),
             value: namespace ?? "—",
           },
           {
-            label: "Request ID",
+            label: t("Request ID"),
             value: requestId ?? "—",
           },
         ]}
@@ -171,10 +210,10 @@ export const RationalePanel: React.FC<RationalePanelProps> = ({
 
       {/* Confidence */}
       <SpaceBetween size="xxs">
-        <Box variant="h5">Confidence</Box>
+        <Box variant="h5">{t("Confidence")}</Box>
         <SpaceBetween size="xs" direction="horizontal" alignItems="center">
           <Badge color={confidenceBadgeColor(result.confidence.score)}>
-            {Math.round(result.confidence.score * 100)}%
+            {confidenceBand(result.confidence.score)}
           </Badge>
           <Box variant="span" color="text-body-secondary" fontSize="body-s">
             {result.confidence.rationale}
@@ -184,7 +223,7 @@ export const RationalePanel: React.FC<RationalePanelProps> = ({
 
       {/* Boundary controls */}
       <SpaceBetween size="xxs">
-        <Box variant="h5">Boundary controls</Box>
+        <Box variant="h5">{t("Boundary controls")}</Box>
         <SpaceBetween size="xs" direction="horizontal">
           <BoundaryBadge label="Cedar" status={getCedarStatus(trace)} />
           <BoundaryBadge
@@ -201,7 +240,7 @@ export const RationalePanel: React.FC<RationalePanelProps> = ({
       {/* Data sources */}
       {result.dataSources && result.dataSources.length > 0 && (
         <SpaceBetween size="xxs">
-          <Box variant="h5">Data sources</Box>
+          <Box variant="h5">{t("Data sources")}</Box>
           <SpaceBetween size="xs" direction="horizontal">
             {result.dataSources.map((ds) => (
               <Badge key={ds} color="blue">
@@ -215,7 +254,9 @@ export const RationalePanel: React.FC<RationalePanelProps> = ({
       {/* Supporting content */}
       {result.supportingContent && result.supportingContent.length > 0 && (
         <ExpandableSection
-          headerText={`Supporting content (${result.supportingContent.length})`}
+          headerText={t("Supporting content ({count})", {
+            count: result.supportingContent.length,
+          })}
           variant="footer"
         >
           <SpaceBetween size="s">
@@ -255,7 +296,9 @@ export const RationalePanel: React.FC<RationalePanelProps> = ({
                         fontSize="body-s"
                         color="text-body-secondary"
                       >
-                        Relevance: {Math.round(item.relevanceScore * 100)}%
+                        {t("Relevance: {score}%", {
+                          score: Math.round(item.relevanceScore * 100),
+                        })}
                       </Box>
                     )}
                   </SpaceBetween>
@@ -269,8 +312,8 @@ export const RationalePanel: React.FC<RationalePanelProps> = ({
       {/* Execution plan — grouped into tier sections */}
       {trace.length > 0 && (
         <SpaceBetween size="s">
-          <Box variant="h3">Execution plan</Box>
-          {buildTierSections(trace).map((section) => (
+          <Box variant="h3">{t("Execution plan")}</Box>
+          {buildTierSections(t, trace).map((section) => (
             <SpaceBetween size="xxs" key={section.key}>
               <Box variant="h5" color="text-body-secondary">
                 {section.title}
@@ -308,7 +351,7 @@ export const RationalePanel: React.FC<RationalePanelProps> = ({
               });
             }}
           >
-            Open full trace
+            {t("Open full trace")}
           </Link>
         </SpaceBetween>
       )}
@@ -332,7 +375,7 @@ interface TierSection {
   subgroups?: StrategySubgroup[];
 }
 
-const SECTION_TITLES: Record<string, string> = {
+const SECTION_TITLES: Readonly<Record<string, AppMessage>> = {
   t1: "Tier 1 — Metric Match",
   t2: "Tier 2 — Structured Query",
   t3: "Tier 3 — Knowledge Retrieval",
@@ -365,27 +408,11 @@ function sectionKeyFor(stepId: string, setupTarget: string): string {
 }
 
 /**
- * Title for the Tier 2 section, reflecting which strategy/strategies ran.
- * Both strategies are structured-query strategies; name them in parallel:
- * NL→SQL (generates SQL) and VKG (Ontop) (generates SPARQL → SQL).
- */
-function tier2Title(trace: TraceStep[]): string {
-  const hasSql = trace.some((s) => s.step.startsWith("t2.sql."));
-  const hasVkg = trace.some((s) => s.step.startsWith("t2.vkg."));
-  const strategies: string[] = [];
-  if (hasSql) strategies.push("NL→SQL");
-  if (hasVkg) strategies.push("VKG (Ontop)");
-  return strategies.length
-    ? `Tier 2 — Structured Query (${strategies.join(" + ")})`
-    : "Tier 2 — Structured Query";
-}
-
-/**
  * Group the trace into tier sections for display. Parallel children (those
  * tagged with a parallelGroup) are pulled out and rendered nested inside their
  * group wrapper's detail, so each section reflects the true execution shape.
  */
-function buildTierSections(trace: TraceStep[]): TierSection[] {
+function buildTierSections(t: AppTranslate, trace: TraceStep[]): TierSection[] {
   const childrenByGroup = new Map<string, TraceStep[]>();
   for (const step of trace) {
     if (step.parallelGroup) {
@@ -402,8 +429,10 @@ function buildTierSections(trace: TraceStep[]): TierSection[] {
     const children = childrenByGroup.get(step.step);
     return {
       status: mapTraceStatus(step.status),
-      header: formatStepName(step.step),
-      details: children ? getGroupDetail(step, children) : getStepDetail(step),
+      header: formatStepName(t, step.step),
+      details: children
+        ? getGroupDetail(t, step, children)
+        : getStepDetail(t, step),
     };
   };
 
@@ -436,7 +465,7 @@ function buildTierSections(trace: TraceStep[]): TierSection[] {
       );
       return {
         key,
-        title: SECTION_TITLES.t2,
+        title: t(SECTION_TITLES.t2),
         steps: leadIn.map(toRow),
         subgroups: [
           { label: "NL→SQL", steps: sqlSteps.map(toRow) },
@@ -446,7 +475,8 @@ function buildTierSections(trace: TraceStep[]): TierSection[] {
     }
     return {
       key,
-      title: key === "t2" ? tier2Title(trace) : SECTION_TITLES[key],
+      title:
+        key === "t2" ? tier2Title(t, trace) : t(SECTION_TITLES[key] ?? "Other"),
       steps: stepsByKey.get(key) ?? [],
     };
   });
@@ -454,28 +484,31 @@ function buildTierSections(trace: TraceStep[]): TierSection[] {
 
 /** Detail renderer for a parallel-group wrapper: nested children + speedup hint. */
 function getGroupDetail(
+  t: AppTranslate,
   group: TraceStep,
   children: TraceStep[],
 ): React.ReactNode {
   const wall = group.wallMs ?? group.durationMs;
   const sum = children.reduce((acc, c) => acc + c.durationMs, 0);
   const saved = sum - wall;
-  const statusLabel = STATUS_LABELS[group.status] ?? group.status;
+  const statusMessage = STATUS_LABELS[group.status];
+  const statusLabel = statusMessage ? t(statusMessage) : group.status;
 
   return (
     <Box variant="small" color="text-body-secondary">
-      {`${children.length} sources in parallel`}
+      {t("{count} sources in parallel", { count: children.length })}
       <Box
         variant="small"
         display="inline"
         padding={{ left: "s" }}
         color="text-status-inactive"
       >
-        {statusLabel} · {formatDuration(wall)} wall
+        {statusLabel} ·{" "}
+        {t("{duration} wall", { duration: formatDuration(wall) })}
       </Box>
       <SpaceBetween size="xxs">
         {children.map((child, i) => {
-          const childDetail = formatStepDetail(child.step, child.detail);
+          const childDetail = formatStepDetail(child.step, child.detail, t);
           return (
             <Box
               key={`${child.step}-${i}`}
@@ -483,7 +516,7 @@ function getGroupDetail(
               padding={{ left: "l" }}
             >
               <StatusIndicator type={mapTraceStatus(child.status)}>
-                {formatStepName(child.step)}
+                {formatStepName(t, child.step)}
               </StatusIndicator>
               <Box
                 variant="small"
@@ -501,7 +534,9 @@ function getGroupDetail(
       </SpaceBetween>
       {saved >= MIN_NOTABLE_SAVINGS_MS && (
         <Box variant="small" color="text-status-success">
-          {`~${formatDuration(saved)} saved by running in parallel`}
+          {t("~{duration} saved by running in parallel", {
+            duration: formatDuration(saved),
+          })}
         </Box>
       )}
     </Box>
@@ -558,9 +593,11 @@ function BoundaryBadge({
   label: string;
   status: BoundaryStatus;
 }) {
+  const { t } = useAppI18n();
+
   return (
     <Badge color={BOUNDARY_COLORS[status]}>
-      {label}: {status}
+      {t("{label}: {status}", { label, status: t(status) })}
     </Badge>
   );
 }

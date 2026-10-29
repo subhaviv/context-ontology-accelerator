@@ -220,6 +220,7 @@ async def list_metrics(
 
     Returns metric summaries including name, description, dimensions, and synonyms.
     Use this tool FIRST to discover what metrics are available before querying.
+    A metric's ``label`` is for display only; queries should use the metric ``name`` or its synonyms.
 
     This is a read-only, lightweight lookup — no LLM calls, no SQL execution.
 
@@ -232,7 +233,7 @@ async def list_metrics(
     Args:
         ctx: MCP request context carrying the caller's identity and bearer token.
         namespaceId: The namespace to list metrics for.
-        maxResults: Maximum number of metrics to return (default 100, max 1000).
+        maxResults: Maximum number of metrics to return (default 100, max 200).
         nextToken: Continuation token from a prior response. When present the
             call resumes where that response left off; matches the Smithy
             ``ListMetrics`` input shape.
@@ -409,8 +410,10 @@ async def query(
         timeoutMs: Optional caller budget in milliseconds. When supplied, the
             Context Manager clamps the request deadline to ``min(transport,
             timeoutMs)`` so a caller can ask for a shorter, graceful return
-            instead of the full transport budget. Non-positive or non-integer
-            values are dropped (same rule as the REST surface).
+            instead of the full transport budget. Must be an integer from 1 to
+            the MCP transport timeout in milliseconds (120000 by default, set
+            by ``CM_INVOKE_TIMEOUT_S``); any other value is rejected with a
+            tool error.
 
     Returns:
         JSON envelope ``{result, requestId, sessionId}`` matching the Smithy
@@ -537,8 +540,10 @@ async def rag_retrieval(
         namespaceId: The namespace to search within.
         topK: Maximum number of chunks to return (default 10, max 100).
         minScore: Minimum similarity score threshold (0.0 to 1.0).
-        sourceFilter: Restrict results to these source document identifiers.
-        entityFilter: Restrict results to chunks annotated with these entities.
+        sourceFilter: Not supported yet — leave unset. A non-empty value is
+            rejected with an error rather than silently ignored.
+        entityFilter: Not supported yet — leave unset. A non-empty value is
+            rejected with an error rather than silently ignored.
 
     Returns:
         JSON ``{chunks, trace, queryEmbeddingModel}`` matching the Smithy

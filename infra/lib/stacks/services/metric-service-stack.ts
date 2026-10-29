@@ -31,6 +31,7 @@ import {
   DEFAULT_GRAPH_URI_BASE,
 } from "../../constants";
 import { bundlePython } from "../../utils/python-bundling";
+import { grantIdempotencyTable } from "../../utils/idempotency";
 import { bedrockModelArn } from "../../utils/bedrock-utils";
 
 /** Name (without the `{prefix}-{env}-` prefix) of the metric API Lambda. */
@@ -183,6 +184,9 @@ export class MetricServiceStack extends SCLStack {
       },
     });
 
+    // CreateMetric / ImportOsi are retry-safe with a caller-supplied clientToken.
+    grantIdempotencyTable(this, this.metricApiFn);
+
     // ── IAM: S3 (OSI import/export) ──────────────────────────────
     this.metricApiFn.addToRolePolicy(
       new iam.PolicyStatement({
@@ -267,41 +271,6 @@ export class MetricServiceStack extends SCLStack {
       ec2.Port.tcp(443),
       "Allow HTTPS from metric Lambda to AOSS VPC endpoint",
     );
-
-    // ── AOSS Data Access Policy ───────────────────────────────────
-    // OpenSearch Serverless requires a data access policy in addition
-    // to IAM permissions. Without this, the role cannot read/write documents.
-    new opensearchserverless.CfnAccessPolicy(this, "OSSDataAccessPolicy", {
-      name: this.prefixed("metric-data-access"),
-      type: "data",
-      policy: JSON.stringify([
-        {
-          Rules: [
-            {
-              ResourceType: "index",
-              Resource: [`index/${opensearchCollectionName}/*`],
-              Permission: [
-                "aoss:CreateIndex",
-                "aoss:UpdateIndex",
-                "aoss:DescribeIndex",
-                "aoss:ReadDocument",
-                "aoss:WriteDocument",
-              ],
-            },
-            {
-              ResourceType: "collection",
-              Resource: [`collection/${opensearchCollectionName}`],
-              Permission: [
-                "aoss:CreateCollectionItems",
-                "aoss:DescribeCollectionItems",
-                "aoss:UpdateCollectionItems",
-              ],
-            },
-          ],
-          Principal: [this.metricApiFn.role!.roleArn],
-        },
-      ]),
-    });
 
     // ── Publish Lambda ARN to SSM ──────────────────────────────────
     new ssm.StringParameter(this, "SsmMetricApiFnArn", {
@@ -464,6 +433,45 @@ export class MetricServiceStack extends SCLStack {
         resources: [opensearchCollectionArn],
       }),
     );
+
+    // ── AOSS Data Access Policy ───────────────────────────────────
+    // OpenSearch Serverless requires a data access policy in addition
+    // to IAM permissions. Without this, the role cannot read/write documents.
+    new opensearchserverless.CfnAccessPolicy(this, "OSSDataAccessPolicy", {
+      name: this.aossName("metric-data-access"),
+      type: "data",
+      policy: JSON.stringify([
+        {
+          Rules: [
+            {
+              ResourceType: "index",
+              Resource: [`index/${opensearchCollectionName}/*`],
+              Permission: [
+                "aoss:CreateIndex",
+                "aoss:UpdateIndex",
+                "aoss:DescribeIndex",
+                "aoss:ReadDocument",
+                "aoss:WriteDocument",
+              ],
+            },
+            {
+              ResourceType: "collection",
+              Resource: [`collection/${opensearchCollectionName}`],
+              Permission: [
+                "aoss:CreateCollectionItems",
+                "aoss:DescribeCollectionItems",
+                "aoss:UpdateCollectionItems",
+              ],
+            },
+          ],
+          // Every role granted aoss:APIAccessAll in this stack.
+          Principal: [
+            this.metricApiFn.role!.roleArn,
+            importWorkerFn.role!.roleArn,
+          ],
+        },
+      ]),
+    });
 
     importWorkerFn.addToRolePolicy(
       new iam.PolicyStatement({

@@ -64,7 +64,8 @@ from coa_control_plane_server.models.list_ontologies_response_content import (
 from coa_control_plane_server.models.ontology_record import (
     OntologyRecord as _OntologyRecord,
 )
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from coa_control_plane_server.models.ontology_type import OntologyType
+from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 
 from coa_ontology import dynamo_store
@@ -86,7 +87,9 @@ from coa_ontology.catalog.schemas import (
     PropertyExtract,
     UnresolvedReference,
 )
-from coa_ontology.catalog.turtle_export import format_grouped_turtle
+from coa_ontology.catalog.turtle_export import format_grouped_turtle, turtle_has_triples
+from coa_ontology.pagination import InvalidNextToken, decode_next_token, page_body
+from coa_ontology.query_params import require_enum_value
 from coa_ontology.stores import build_stores as _build_stores  # noqa: F401 (re-exported)
 from coa_ontology.stores.base import GraphStore, VectorStore
 
@@ -201,32 +204,65 @@ def _merge_registry_and_graph(registry_row: dict | None, graph_row: dict | None)
     return merged
 
 
-@router.get("/", response_model=ListOntologiesResponseContent, response_model_by_alias=True)
+# ListOntologies page-size bound — the Smithy ``maxResults`` (and legacy
+# ``limit``) @range max — and default. ``skip`` is the legacy offset.
+LIST_ONTOLOGIES_DEFAULT_MAX_RESULTS = 50
+LIST_ONTOLOGIES_MAX_RESULTS = 1000
+LIST_ONTOLOGIES_MAX_SKIP = 10000
+
+
+# ``exclude_unset`` keeps ``nextToken`` off the last page (absent, not null)
+# without dropping the records' own null fields, which are always set.
+@router.get(
+    "/", response_model=ListOntologiesResponseContent, response_model_by_alias=True, response_model_exclude_unset=True
+)
 def list_ontologies(
     ontology_type: str | None = None,
     uri: str | None = None,
     source_registry: str | None = None,
     license_tier: str | None = None,
     domain_tag: str | None = None,
-    skip: int = 0,
-    limit: int = 50,
+    skip: int = Query(0, ge=0, le=LIST_ONTOLOGIES_MAX_SKIP),
+    limit: int | None = Query(None, ge=1, le=LIST_ONTOLOGIES_MAX_RESULTS),
+    max_results: int | None = Query(None, alias="maxResults", ge=1, le=LIST_ONTOLOGIES_MAX_RESULTS),
+    next_token: str | None = Query(None, alias="nextToken"),
     namespace: str = "default",
 ):
-    """List ontologies from the DynamoDB namespace registry."""
-    rows = dynamo_store.list_ontologies_registry(
+    """List one page of ontologies from the DynamoDB namespace registry.
+
+    Returns the Smithy ``ListOntologies`` output, ``{"ontologies": [...],
+    "nextToken": "..."}``. ``nextToken`` is present only when more results may
+    follow; a malformed token, or one minted for another namespace, is a 400. A
+    page can be short — even empty — while ``nextToken`` is present (each request
+    reads a bounded slice of the registry); keep paging until it is absent.
+
+    ``uri``, ``source_registry`` and ``license_tier`` are exact-match filters on
+    the registry row. The pre-contract ``limit`` (page size; ``maxResults`` wins
+    when both are sent) and ``skip`` (an offset applied before the page) still
+    bind for existing callers; ``skip`` is applied relative to ``nextToken``.
+
+    ``ontology_type`` must be an ``OntologyType`` value; anything else is a 400.
+    Every value the service stores is one (the write routes check the same enum),
+    so no stored row is left unfilterable.
+    """
+    require_enum_value("ontology_type", ontology_type, OntologyType)
+    scope = f"ontologies:{namespace}"
+    try:
+        start_key = decode_next_token(next_token, scope=scope, pk=dynamo_store.ontology_registry_pk(namespace))
+    except InvalidNextToken as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    page_size = max_results or limit or LIST_ONTOLOGIES_DEFAULT_MAX_RESULTS
+    extra = {"uri": uri, "source_registry": source_registry, "license_tier": license_tier}
+    rows, next_key = dynamo_store.list_ontologies_registry_page(
         namespace=namespace,
         ontology_type=ontology_type,
         domain_tag=domain_tag,
-        limit=(skip + limit) if limit else None,
+        attribute_equals={k: v for k, v in extra.items() if v},
+        limit=skip + page_size,
+        exclusive_start_key=start_key,
     )
-    # Additional filters that aren't natively supported by the DDB query
-    if uri:
-        rows = [r for r in rows if r.get("uri") == uri]
-    if source_registry:
-        rows = [r for r in rows if r.get("source_registry") == source_registry]
-    if license_tier:
-        rows = [r for r in rows if r.get("license_tier") == license_tier]
-    return ListOntologiesResponseContent(ontologies=[_to_record(r) for r in rows[skip : skip + limit]])
+    body = page_body("ontologies", [_to_record(r) for r in rows[skip:]], next_key, scope=scope)
+    return ListOntologiesResponseContent(**body)
 
 
 _DOWNLOAD_URL_TTL_S = 3600
@@ -259,7 +295,10 @@ def download_ontology_file(ontology_id: str, namespace: str = "default"):
             e,
         )
 
-    if graph_turtle is not None and graph_turtle.strip():
+    # An unknown graph can come back as a header with no triples (``@prefix``
+    # lines only). Treat that like an empty graph — fall through to the cache
+    # lookup, which 404s — instead of writing and presigning an empty file.
+    if graph_turtle is not None and turtle_has_triples(graph_turtle):
         try:
             body = format_grouped_turtle(graph_turtle)
         except Exception as e:
@@ -353,7 +392,12 @@ def get_ontology(ontology_id: str, namespace: str = "default"):
 
 @router.post("/", response_model=OntologyResponse, status_code=201)
 def create_ontology(body: OntologyCreate, namespace: str = "default"):
-    """Register metadata only (no content). For full ingests use ``/upload``."""
+    """Register metadata only (no content). For full ingests use ``/upload``.
+
+    ``ontology_type`` must be an ``OntologyType`` value (400 otherwise), the same
+    check ``list_ontologies`` applies, so every stored row can be filtered on.
+    """
+    require_enum_value("ontology_type", body.ontology_type, OntologyType)
     graph = _graph(namespace)
     if graph.get_ontology_by_uri(body.uri) or dynamo_store.get_ontology_registry(namespace, body.uri):
         raise HTTPException(409, f"Ontology with URI '{body.uri}' already exists")
@@ -550,7 +594,9 @@ def _delete_ontology_backend(namespace: str, ontology_id: str, proposal_ids: lis
             namespace,
             exc_info=True,
         )
-        _mark_delete_error(namespace, ontology_id, f"Graph delete failed: {type(e).__name__}: {e}")
+        # deleteError is returned by ListOntologies: the exception type only, the
+        # message (graph endpoint, query detail) stays in the log line above.
+        _mark_delete_error(namespace, ontology_id, f"Graph delete failed: {type(e).__name__}")
         return
 
     # Hard gate 2: AOSS embedding teardown. Same rationale — leaving embeddings
@@ -587,7 +633,7 @@ def _delete_ontology_backend(namespace: str, ontology_id: str, proposal_ids: lis
             namespace,
             exc_info=True,
         )
-        _mark_delete_error(namespace, ontology_id, f"Embedding delete failed: {type(e).__name__}: {e}")
+        _mark_delete_error(namespace, ontology_id, f"Embedding delete failed: {type(e).__name__}")
         return
 
     # Delete the proposals (DDB rows + S3 artifacts) tied to this ontology —
@@ -818,7 +864,11 @@ def upload_ontology_file(
     reject a body value that disagrees with the authorized one. The sibling
     ``/upload-url`` route takes ``namespace`` as a query param for exactly this
     reason.
+
+    ``ontology_type`` must be an ``OntologyType`` value (400 otherwise, before
+    anything is written), the same check ``list_ontologies`` applies.
     """
+    require_enum_value("ontology_type", ontology_type, OntologyType)
     # Fail fast on a duplicate upload before writing the file to disk,
     # so a repeat call doesn't leave an orphaned copy on the filesystem.
     if dynamo_store.get_ontology_registry(namespace, ontology_id):
@@ -918,7 +968,8 @@ def _resolve_and_validate_url(url: str) -> tuple[str, str, str]:
     try:
         infos = socket.getaddrinfo(parsed.hostname, None)
     except socket.gaierror as e:
-        raise HTTPException(400, f"Cannot resolve source_url host: {e}") from e
+        log.info("source_url host resolution failed: %s", e)
+        raise HTTPException(400, "Cannot resolve source_url host") from e
     if not infos:
         raise HTTPException(400, "source_url hostname resolved to no addresses")
 
@@ -933,7 +984,10 @@ def _resolve_and_validate_url(url: str) -> tuple[str, str, str]:
     for _family, _type, _proto, _canon, sockaddr in infos:
         ip = ipaddress.ip_address(sockaddr[0])
         if not ip.is_global or ip.is_multicast:
-            raise HTTPException(400, f"source_url resolves to non-routable address {ip}")
+            # Don't echo the address: naming the private IP a hostname resolves
+            # to would turn this check into an internal-DNS oracle.
+            log.warning("source_url rejected: host resolves to non-routable address %s", ip)
+            raise HTTPException(400, "source_url resolves to a non-routable address")
         validated_ips.append(str(ip))
 
     # Use the first validated IP and reconstruct the URL to connect directly to it
@@ -1535,6 +1589,13 @@ def _run_ingest_from_s3(
         )
 
 
+def _enum_value(value: object) -> str | None:
+    """The plain string behind a generated-model enum member (``None`` passes through)."""
+    if value is None:
+        return None
+    return str(getattr(value, "value", value))
+
+
 @router.post("/{ontology_id:path}/ingest-from-s3", status_code=202)
 def ingest_ontology_from_s3(
     ontology_id: str,
@@ -1562,7 +1623,10 @@ def ingest_ontology_from_s3(
         raise HTTPException(403, "s3_key must be within this namespace's upload prefix")
 
     filename = s3_key.rsplit("/", 1)[-1] if "/" in s3_key else s3_key
-    fmt = body.format or _infer_rdf_format(filename)
+    # ``format`` / ``ontology_type`` are contract enums (str-valued Enum members
+    # on the generated model); persist and pass on their plain string values.
+    fmt = _enum_value(body.format) or _infer_rdf_format(filename)
+    ontology_type = _enum_value(body.ontology_type) or "user_created"
 
     job_id = str(_uuid.uuid4())
     dynamo_store.put_ingest_job(job_id, ontology_id, IngestJobState.PENDING, namespace=namespace)
@@ -1580,7 +1644,7 @@ def ingest_ontology_from_s3(
             ontology_id,
             uri=ontology_id,
             title=body.title or ontology_id,
-            ontology_type=body.ontology_type or "user_created",
+            ontology_type=ontology_type,
             format=fmt,
             status=ONTOLOGY_STATUS_INGESTING,
             parse_status="pending",
@@ -1592,7 +1656,7 @@ def ingest_ontology_from_s3(
 
     Thread(
         target=_run_ingest_from_s3,
-        args=(job_id, ontology_id, s3_key, fmt, body.title or "", body.ontology_type or "user_created", namespace),
+        args=(job_id, ontology_id, s3_key, fmt, body.title or "", ontology_type, namespace),
         daemon=True,
     ).start()
 

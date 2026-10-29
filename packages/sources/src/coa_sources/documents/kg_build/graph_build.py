@@ -678,21 +678,22 @@ def _extraction_language_instruction(namespace_language: str) -> str:
 
 Write your output in {target}, the language of this knowledge graph.
 
-- Write every title, proposition, topic, entity, classification, relationship and \
-attribute name you produce in that language, using the words the source text itself \
-uses. Do not translate them into English and do not append an English gloss.
-- Where these instructions ask for relationship or attribute names in uppercase with \
-underscores (for example WORKS_FOR), that rule sets the format, not the language: write \
-each such name in the output language. Uppercase applies only to letters that have case, \
-and an underscore stands only where the name would otherwise contain a space.
-- When a preferred topic or entity-classification list is provided in English, treat \
-each entry as a concept, not a spelling: name the matching concept in the output language.
-- Copy identifiers exactly as printed, whatever script they use: model, type, part, \
-drawing and option numbers; standard and regulation designations; company, brand and \
-product names; signal and terminal names; units; codes and IRIs. An identifier that is \
-ASCII in the source stays ASCII.
-- These instructions are in English for your benefit. Do not echo them, and do not \
-treat them as evidence about the language of the output.
+- The response format is a fixed template read by a program. Keep its fixed labels \
+(`topic:`, `entities:`, `proposition:`, `entity-entity relationships:`, `entity-attributes:`), \
+colons, `|` separators and layout exactly as written, in English. Write only the values that \
+fill its placeholders in {target}, using the words the source text uses. The classification \
+after the `|` separator is a value: write it in {target}.
+- Relationship and attribute names keep the uppercase-with-underscores format, written in \
+{target}. Uppercase applies only to letters that have case, and an underscore stands only \
+where the name would otherwise contain a space.
+- Treat English preferred topics and classifications as concepts, not spellings; name the \
+matching concept in {target}. Do not append an English gloss.
+- Copy identifiers exactly as printed, whatever script they use: model, type, part, drawing \
+and option numbers; standard and regulation designations; company, brand and product names; \
+signal and terminal names; units; codes and IRIs. An identifier that is ASCII in the source \
+stays ASCII.
+- These instructions are in English for your benefit. Do not echo them, and do not treat \
+them as evidence about the language of the output.
 
 """
 
@@ -1353,6 +1354,41 @@ def _build_indexing_config(bucket_name: str, namespace_id: str, doc_source_id: s
     return IndexingConfig(**kwargs)
 
 
+def _warn_if_no_topics(graph_store_uri: str, tenant_id: str, doc_source_id: str, docs: int) -> None:
+    """Log ``kg_build_zero_topics_extracted`` when a finished build left the tenant with no topics.
+
+    An extraction reply the toolkit cannot parse (for example translated response labels)
+    yields no topics and no error, so the source would otherwise end COMPLETED with an
+    empty graph. Best-effort: never fails the build.
+
+    ponytail: counts the whole tenant, so an empty source in a namespace that already has
+    topics from a *different* source is not flagged. The caller runs this after
+    DELETE_PREV_VERSIONS, so a re-ingest that regresses to zero is no longer masked by the
+    source's own prior good version. Scoping to this source's current version
+    (``__EXTRACTED_FROM__``/``__MENTIONED_IN__`` as the toolkit's delete_sources.py does, keyed
+    on the toolkit-assigned sourceId — not doc_source_id) would close the cross-source case too.
+    """
+    from graphrag_toolkit.lexical_graph import TenantId
+    from graphrag_toolkit.lexical_graph.storage import GraphStoreFactory
+
+    try:
+        tenant = TenantId(tenant_id)
+        with GraphStoreFactory.for_graph_store(graph_store_uri) as graph_store:
+            topics = graph_store.execute_query(f"MATCH (t:{tenant.format_label('__Topic__')}) RETURN count(t) AS n")
+            if topics[0]["n"] != 0:
+                return
+            chunks = graph_store.execute_query(f"MATCH (c:{tenant.format_label('__Chunk__')}) RETURN count(c) AS n")
+        logger.warning(
+            "kg_build_zero_topics_extracted",
+            doc_source_id=doc_source_id,
+            docs=docs,
+            chunks=chunks[0]["n"],
+            hint="extraction replies were not parsed; check the response format labels in the model output",
+        )
+    except Exception as e:  # noqa: BLE001 — diagnostics must never fail the build
+        logger.debug("kg_build_zero_topics_check_failed", error=type(e).__name__)
+
+
 # ---------------------------------------------------------------------------
 # Mode: continuous — extract_and_build() in a single pass
 # ---------------------------------------------------------------------------
@@ -1405,8 +1441,28 @@ def _run_continuous(
         except Exception:
             tb = traceback.format_exc()
             logger.error("Continuous build failed", error=tb)
-            ddb.update(ddb_key, {"status": SourceStatus.SCAN_FAILED, "errorMessage": f"SCAN_FAILED_BUILD: {tb[:500]}"})
+            ddb.update(
+                ddb_key,
+                {"status": SourceStatus.SCAN_FAILED, "errorMessage": _stage_failure_message("SCAN_FAILED_BUILD")},
+            )
             return 0, total_docs
+
+
+# Client-facing text per failure stage. errorMessage is returned to callers by
+# GetSource, so it carries the stage code and a fixed explanation; the traceback
+# goes to the log only (it names hosts, ARNs and internal paths).
+_STAGE_FAILURE_TEXT: dict[str, str] = {
+    "SCAN_FAILED_BUILD": "the knowledge-graph build failed",
+    "SCAN_FAILED_EXTRACT": "entity extraction failed",
+    "SCAN_FAILED_LOAD": "the staged documents could not be loaded",
+    "SCAN_FAILED_GRAPH_STORE": "the graph store health check failed",
+    "SCAN_FAILED_VECTOR_STORE": "the vector store health check failed",
+}
+
+
+def _stage_failure_message(code: str) -> str:
+    """Return ``"<code>: <fixed explanation>; see the service logs for details."``."""
+    return f"{code}: {_STAGE_FAILURE_TEXT.get(code, 'processing failed')}; see the service logs for details."
 
 
 # ---------------------------------------------------------------------------
@@ -1439,7 +1495,7 @@ def _check_backend_health(
             ddb_key,
             {
                 "status": SourceStatus.SCAN_FAILED,
-                "errorMessage": f"SCAN_FAILED_GRAPH_STORE: {tb[:500]}",
+                "errorMessage": _stage_failure_message("SCAN_FAILED_GRAPH_STORE"),
             },
         )
         return False
@@ -1464,7 +1520,7 @@ def _check_backend_health(
             ddb_key,
             {
                 "status": SourceStatus.SCAN_FAILED,
-                "errorMessage": f"SCAN_FAILED_VECTOR_STORE: {tb[:500]}",
+                "errorMessage": _stage_failure_message("SCAN_FAILED_VECTOR_STORE"),
             },
         )
         return False
@@ -1537,7 +1593,8 @@ def _run_separated(
             tb = traceback.format_exc()
             logger.error("Extract failed", error=tb)
             ddb.update(
-                ddb_key, {"status": SourceStatus.SCAN_FAILED, "errorMessage": f"SCAN_FAILED_EXTRACT: {tb[:500]}"}
+                ddb_key,
+                {"status": SourceStatus.SCAN_FAILED, "errorMessage": _stage_failure_message("SCAN_FAILED_EXTRACT")},
             )
             return 0, total_docs
 
@@ -1558,7 +1615,10 @@ def _run_separated(
                 collection_id,
                 error=tb,
             )
-            ddb.update(ddb_key, {"status": SourceStatus.SCAN_FAILED, "errorMessage": f"SCAN_FAILED_BUILD: {tb[:500]}"})
+            ddb.update(
+                ddb_key,
+                {"status": SourceStatus.SCAN_FAILED, "errorMessage": _stage_failure_message("SCAN_FAILED_BUILD")},
+            )
             return 0, total_docs
 
         ddb.update(ddb_key, {"docsGraphIngested": total_docs})
@@ -1634,7 +1694,9 @@ def main() -> None:
     except Exception:
         tb = traceback.format_exc()
         logger.error("Failed to load staged documents", staging_prefix=staging_prefix, error=tb)
-        ddb.update(ddb_key, {"status": SourceStatus.SCAN_FAILED, "errorMessage": f"SCAN_FAILED_LOAD: {tb[:500]}"})
+        ddb.update(
+            ddb_key, {"status": SourceStatus.SCAN_FAILED, "errorMessage": _stage_failure_message("SCAN_FAILED_LOAD")}
+        )
         sys.exit(1)
     if not documents:
         # Genuinely empty prefix (listing succeeded, zero usable docs). If some
@@ -1806,6 +1868,11 @@ def main() -> None:
         except Exception:
             tb = traceback.format_exc()
             logger.warning("Failed to delete previous versions (non-fatal)", error=tb)
+
+    # Counts topics only after prior archived versions are deleted, so a re-ingest
+    # that regresses to zero topics is not masked by the previous good version.
+    if docs_ok > 0:
+        _warn_if_no_topics(graph_store_uri, tenant_id, doc_source_id, docs_ok)
 
     elapsed = round(time.time() - start_ts, 2)
 

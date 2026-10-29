@@ -21,8 +21,9 @@ import { Construct } from "constructs";
 import { SCLStack } from "../../constructs/scl-stack";
 import { SclMonitoring } from "../../constructs";
 import { Paths } from "../../paths";
-import { resolveContext } from "../../context";
+import { resolveContext, guardrailProfileResources } from "../../context";
 import { bundlePython } from "../../utils/python-bundling";
+import { grantIdempotencyTable } from "../../utils/idempotency";
 import { NetworkStack } from "../foundation/network-stack";
 import {
   DEFAULT_BEDROCK_MODEL_ID,
@@ -363,7 +364,7 @@ export class OntologyStack extends SCLStack {
       this,
       "OSSDataAccessPolicy",
       {
-        name: this.prefixed("ontology-oss"),
+        name: this.aossName("ontology-oss"),
         type: "data",
         policy: JSON.stringify([
           {
@@ -433,6 +434,7 @@ export class OntologyStack extends SCLStack {
           `arn:aws:bedrock:*::foundation-model/*`,
           `arn:aws:bedrock:*:${account}:inference-profile/*`,
           `arn:aws:bedrock:${region}:${account}:guardrail/*`,
+          ...guardrailProfileResources(this),
         ],
       }),
     );
@@ -1115,6 +1117,8 @@ export class OntologyStack extends SCLStack {
           "cryptography>=43.0",
           "PyJWT>=2.9.0",
           "requests>=2.32.0",
+          // First certifi without the roots behind the compromised emSign intermediates.
+          "certifi>=2026.10.19",
         ],
       }),
       timeout: cdk.Duration.seconds(60),
@@ -1134,6 +1138,9 @@ export class OntologyStack extends SCLStack {
         ALLOWED_ORIGIN: props.allowedOrigin,
       },
     });
+    // StartInduction is retry-safe with a clientToken; the proxy (not the ECS
+    // service) enforces it because only it sees the caller identity.
+    grantIdempotencyTable(this, apiProxyFn);
     // System-health check describes only the sources table (SOURCES_TABLE).
     apiProxyFn.addToRolePolicy(
       new iam.PolicyStatement({

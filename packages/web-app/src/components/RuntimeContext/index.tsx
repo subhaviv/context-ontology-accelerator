@@ -10,6 +10,7 @@ import React, {
   useState,
 } from "react";
 import { OidcConfig } from "@auth";
+import { useAppI18n } from "../../i18n/LocaleProvider";
 
 export interface RuntimeContext {
   readonly region: string;
@@ -18,6 +19,8 @@ export interface RuntimeContext {
   readonly apiEndpoint?: string;
   /** AgentCore Runtime ARN. Frontend builds the invocations URL from this + region. */
   readonly serveRuntimeArn?: string;
+  /** MCP Server AgentCore Runtime ARN. Frontend builds the MCP endpoint URL from this + region. */
+  readonly mcpRuntimeArn?: string;
   /** Monorepo version (from VERSION), rendered as a badge in the UI. */
   readonly version?: string;
   readonly oidcConfig: OidcConfig;
@@ -39,6 +42,7 @@ export const RuntimeConfigContext = createContext<RuntimeContext | undefined>(
 export const RuntimeContextProvider: React.FC<PropsWithChildren> = ({
   children,
 }) => {
+  const { t } = useAppI18n();
   const [runtimeContext, setRuntimeContext] = useState<
     RuntimeContext | undefined
   >();
@@ -53,7 +57,7 @@ export const RuntimeContextProvider: React.FC<PropsWithChildren> = ({
       .then((config: Record<string, string>) => {
         if (!config.region || !config.authority || !config.clientId) {
           setError(
-            "runtime-config.json must have region, authority, and clientId.",
+            t("runtime-config.json must have region, authority, and clientId."),
           );
           return;
         }
@@ -66,8 +70,8 @@ export const RuntimeContextProvider: React.FC<PropsWithChildren> = ({
           oidcConfig,
         } as unknown as RuntimeContext);
       })
-      .catch(() => setError("No runtime-config.json detected"));
-  }, []);
+      .catch(() => setError(t("No runtime-config.json detected")));
+  }, [t]);
 
   if (error) {
     return <div style={{ padding: "2rem", color: "#d13212" }}>{error}</div>;

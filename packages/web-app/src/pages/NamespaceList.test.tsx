@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import React from "react";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { LocaleProvider } from "../i18n/LocaleProvider";
 import {
   NamespaceList,
   getStatusActionItems,
@@ -21,6 +22,8 @@ let mockNamespaces: Array<{
   status: string;
   sourceCount?: number;
   language?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }> = [];
 
 vi.mock("../api-hooks", () => ({
@@ -47,6 +50,14 @@ const wrapper = ({ children }: { children: React.ReactNode }) => (
   </QueryClientProvider>
 );
 
+const localizedWrapper = ({ children }: { children: React.ReactNode }) => (
+  <LocaleProvider>
+    <QueryClientProvider client={new QueryClient()}>
+      <MemoryRouter>{children}</MemoryRouter>
+    </QueryClientProvider>
+  </LocaleProvider>
+);
+
 describe("NamespaceList", () => {
   beforeEach(() => {
     mockNamespaces = [];
@@ -68,6 +79,32 @@ describe("NamespaceList", () => {
     expect(
       screen.getAllByRole("button", { name: /create namespace/i }).length,
     ).toBeGreaterThan(0);
+  });
+
+  it("formats namespace dates with the selected application locale", async () => {
+    window.localStorage.setItem("scl.locale", "ja");
+    mockNamespaces = [
+      {
+        namespaceId: "ns-1",
+        name: "sales-data",
+        status: NamespaceStatus.ACTIVE,
+        createdAt: "2026-01-01T00:00:00Z",
+        updatedAt: "2026-05-01T00:00:00Z",
+      },
+    ];
+    const formatDate = vi.spyOn(Date.prototype, "toLocaleDateString");
+
+    try {
+      render(<NamespaceList />, { wrapper: localizedWrapper });
+
+      await waitFor(() => {
+        expect(formatDate).toHaveBeenCalledWith("ja");
+      });
+    } finally {
+      formatDate.mockRestore();
+      window.localStorage.clear();
+      document.documentElement.lang = "";
+    }
   });
 });
 
@@ -107,6 +144,149 @@ describe("NamespaceList language column", () => {
     expect(
       within(screen.getByRole("row", { name: /pt-ns/i })).getByText("pt-BR"),
     ).toBeInTheDocument();
+  });
+
+  it("labels the offered languages in the application locale", async () => {
+    window.localStorage.setItem("scl.locale", "ja");
+    try {
+      render(<NamespaceList />, { wrapper: localizedWrapper });
+      expect(
+        await screen.findByRole("columnheader", { name: /言語/ }),
+      ).toBeInTheDocument();
+      expect(
+        within(screen.getByRole("row", { name: /ja-ns/i })).getByText(
+          "日本語 (ja)",
+        ),
+      ).toBeInTheDocument();
+      expect(
+        within(screen.getByRole("row", { name: /en-ns/i })).getByText(
+          "英語 (en)",
+        ),
+      ).toBeInTheDocument();
+      // A tag the console did not author is shown as-is in every locale.
+      expect(
+        within(screen.getByRole("row", { name: /pt-ns/i })).getByText("pt-BR"),
+      ).toBeInTheDocument();
+    } finally {
+      window.localStorage.clear();
+      document.documentElement.lang = "";
+    }
+  });
+});
+
+describe("NamespaceList status column", () => {
+  beforeEach(() => {
+    mockNamespaces = [
+      { namespaceId: "ns-a", name: "active-ns", status: "ACTIVE" },
+      { namespaceId: "ns-b", name: "archived-ns", status: "ARCHIVED" },
+    ];
+  });
+
+  it("shows the status as a word in English", () => {
+    render(<NamespaceList />, { wrapper });
+    expect(
+      within(screen.getByRole("row", { name: /active-ns/i })).getByText(
+        "Active",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("ACTIVE")).not.toBeInTheDocument();
+  });
+
+  it("shows the status in Japanese, matching the status filter", async () => {
+    window.localStorage.setItem("scl.locale", "ja");
+    try {
+      render(<NamespaceList />, { wrapper: localizedWrapper });
+      await screen.findByRole("columnheader", { name: /ステータス/ });
+      expect(
+        within(screen.getByRole("row", { name: /active-ns/i })).getByText(
+          "アクティブ",
+        ),
+      ).toBeInTheDocument();
+      expect(
+        within(screen.getByRole("row", { name: /archived-ns/i })).getByText(
+          "アーカイブ済み",
+        ),
+      ).toBeInTheDocument();
+    } finally {
+      window.localStorage.clear();
+      document.documentElement.lang = "";
+    }
+  });
+});
+
+describe("NamespaceList filter and sort follow the shown status", () => {
+  beforeEach(() => {
+    mockNamespaces = [
+      { namespaceId: "ns-a", name: "alpha-ns", status: "ACTIVE" },
+      { namespaceId: "ns-b", name: "bravo-ns", status: "ARCHIVED" },
+      { namespaceId: "ns-c", name: "charlie-ns", status: "DELETED" },
+      { namespaceId: "ns-d", name: "delta-ns", status: "DELETE_FAILED" },
+    ];
+  });
+
+  const shownNames = () =>
+    screen
+      .getAllByRole("row")
+      .map((row) => row.textContent ?? "")
+      .map((text) => /(alpha|bravo|charlie|delta)-ns/.exec(text)?.[0])
+      .filter((name): name is string => Boolean(name));
+
+  const inJapanese = async (body: () => Promise<void>) => {
+    window.localStorage.setItem("scl.locale", "ja");
+    try {
+      render(<NamespaceList />, { wrapper: localizedWrapper });
+      await screen.findByRole("columnheader", { name: /ステータス/ });
+      await body();
+    } finally {
+      window.localStorage.clear();
+      document.documentElement.lang = "";
+    }
+  };
+
+  it("finds a row by the Japanese status word shown in the cell", async () => {
+    await inJapanese(async () => {
+      const user = userEvent.setup();
+      await user.type(
+        screen.getByPlaceholderText("名前空間を検索"),
+        "アクティブ",
+      );
+      await waitFor(() => expect(shownNames()).toEqual(["alpha-ns"]));
+    });
+  });
+
+  it("still finds a row by the API value and by name", async () => {
+    const user = userEvent.setup();
+    render(<NamespaceList />, { wrapper });
+    const filter = screen.getByPlaceholderText("Find namespaces");
+    await user.type(filter, "ARCHIVED");
+    await waitFor(() => expect(shownNames()).toEqual(["bravo-ns"]));
+    await user.clear(filter);
+    await user.type(filter, "Delete failed");
+    await waitFor(() => expect(shownNames()).toEqual(["delta-ns"]));
+    await user.clear(filter);
+    await user.type(filter, "charlie");
+    await waitFor(() => expect(shownNames()).toEqual(["charlie-ns"]));
+  });
+
+  it("sorts the status column by the Japanese label", async () => {
+    await inJapanese(async () => {
+      const user = userEvent.setup();
+      await user.click(
+        within(
+          screen.getByRole("columnheader", { name: /ステータス/ }),
+        ).getByText("ステータス"),
+      );
+      // アーカイブ済み < アクティブ < 削除済み < 削除失敗 in Japanese
+      // collation; the API values would sort ACTIVE first.
+      await waitFor(() =>
+        expect(shownNames()).toEqual([
+          "bravo-ns",
+          "alpha-ns",
+          "charlie-ns",
+          "delta-ns",
+        ]),
+      );
+    });
   });
 });
 

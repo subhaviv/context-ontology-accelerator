@@ -1,6 +1,6 @@
 [project]
 name = "coa-sources"
-version = "0.3.6"
+version = "0.3.8"
 description = "Unified Sources for Context Ontology Accelerator"
 requires-python = ">=3.12"
 
@@ -9,6 +9,9 @@ dependencies = [
     "coa-common",
     "coa-control-plane-server",
     "boto3>=1.35.0",
+    # 2026.10.19 is the first certifi bundle without the roots behind the compromised
+    # emSign intermediates. botocore also uses certifi's bundle over its own when installed.
+    "certifi>=2026.10.19",
 ]
 
 [build-system]

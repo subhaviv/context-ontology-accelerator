@@ -3,6 +3,8 @@
 
 import React from "react";
 import { Button, Input } from "@cloudscape-design/components";
+import { useAppI18n } from "../../../i18n/LocaleProvider";
+import { isSubmitEnter, type EnterKeyDetail } from "@utils/keyboard";
 
 export interface ChatInputProps {
   value: string;
@@ -19,10 +21,11 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   onSubmit,
   disabled = false,
   submitDisabled = false,
-  placeholder = "Ask a question against the governed surface...",
+  placeholder,
 }) => {
-  const handleKeyDown = (event: CustomEvent<{ key: string }>) => {
-    if (event.detail.key === "Enter") {
+  const { t } = useAppI18n();
+  const handleKeyDown = (event: CustomEvent<EnterKeyDetail>) => {
+    if (isSubmitEnter(event.detail)) {
       onSubmit();
     }
   };
@@ -34,9 +37,11 @@ export const ChatInput: React.FC<ChatInputProps> = ({
           value={value}
           onChange={({ detail }) => onChange(detail.value)}
           onKeyDown={handleKeyDown}
-          placeholder={placeholder}
+          placeholder={
+            placeholder ?? t("Ask a question against the governed surface...")
+          }
           disabled={disabled}
-          ariaLabel="Query"
+          ariaLabel={t("Query")}
         />
       </div>
       <Button
@@ -44,7 +49,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
         iconName="send"
         onClick={onSubmit}
         disabled={submitDisabled}
-        ariaLabel="Run query"
+        ariaLabel={t("Run query")}
       />
     </div>
   );

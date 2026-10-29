@@ -5,9 +5,15 @@ import * as fs from "fs";
 import * as path from "path";
 import * as cdk from "aws-cdk-lib";
 import { Template, Match } from "aws-cdk-lib/assertions";
+import { expectIdempotencyWiring } from "../utils/idempotency-assertions";
 import { OntologyStack } from "../../lib/stacks/services/ontology-stack";
 import { NetworkStack } from "../../lib/stacks/foundation/network-stack";
 import { DEFAULT_RESOURCE_PREFIX, DEFAULT_ENV } from "../../lib/constants";
+import {
+  LONG_PREFIX_CONTEXT,
+  expectValidAossNames,
+} from "../utils/aoss-name-assertions";
+import { expectAossGrantsCoveredByDataPolicies } from "../utils/aoss-access-assertions";
 
 const TEST_CONTEXT = {
   resource_prefix: DEFAULT_RESOURCE_PREFIX,
@@ -273,6 +279,15 @@ describe("OntologyStack", () => {
         allowedOrigin: "https://test.example.com",
       }),
     );
+  });
+
+  test("names every aoss:APIAccessAll role in an AOSS data-access policy", () => {
+    expectAossGrantsCoveredByDataPolicies(template);
+  });
+
+  it("wires only the create-operation Lambda(s) to the idempotency table", () => {
+    // IDEMPOTENCY_TABLE env + Get/Put/Update/DeleteItem on that table only.
+    expectIdempotencyWiring(template, ["-ontology-api-proxy"]);
   });
 
   // ── DynamoDB Table ──────────────────────────────────────────────
@@ -664,5 +679,13 @@ describe("ontology-engine Dockerfile CVE hygiene", () => {
 
   test("upgrades pip so its own advisories are picked up", () => {
     expect(dockerfile).toMatch(/pip install[^\n]*--upgrade pip/);
+  });
+});
+
+describe("OntologyStack with a long resource_prefix", () => {
+  it("keeps every OpenSearch Serverless name valid", () => {
+    expectValidAossNames(
+      renderOntology({}, "TestOntologyLongPrefix", LONG_PREFIX_CONTEXT),
+    );
   });
 });

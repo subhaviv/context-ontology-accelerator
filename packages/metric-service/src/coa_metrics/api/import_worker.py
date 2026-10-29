@@ -33,7 +33,12 @@ from coa_metrics.api.import_job_store import (
     job_progress_frontier,
     store_job_offset_plan,
 )
-from coa_metrics.api.import_osi import _get_lookup, _osi_metric_to_definition
+from coa_metrics.api.import_osi import (
+    _get_lookup,
+    _osi_metric_to_definition,
+    _overwrite_warning,
+    label_cleared_detail,
+)
 from coa_metrics.api.import_plan_payload import (
     OffsetPlanPayload,
     PlannedMetric,
@@ -63,6 +68,8 @@ logger = structlog.get_logger(__name__)
 _QUEUE_URL = os.environ.get("IMPORT_QUEUE_URL", "")
 _BUCKET = os.environ.get("OSI_BUCKET_NAME", "")
 _OFFSET_LEASE_SECONDS = int(os.environ.get("IMPORT_OFFSET_LEASE_SECONDS", "960"))
+# Job error recorded when source approval / table catalog checks are unavailable.
+SOURCE_VALIDATION_UNAVAILABLE_ERROR = "Data source validation is unavailable — retry the import later"
 
 _neptune: MetricNeptuneClient | None = None
 _s3 = None
@@ -186,16 +193,16 @@ def _resolve_ontology_concepts(
         )
 
 
-def _overwrite_warning(metric_name: str, existing: MetricDefinition) -> str:
-    """Return the durable warning for a metric that existed during planning."""
-    author = existing.defined_by
-    author_detail = f" authored by {author.strip()}" if isinstance(author, str) and author.strip() else ""
-    return f"Metric '{metric_name}' overwritten (had existing metadata{author_detail})"
+def _duplicate_overwrite_warning(metric_name: str, earlier: MetricDefinition, later: MetricDefinition) -> str:
+    """Return the deterministic warning for an ordered duplicate definition.
 
-
-def _duplicate_overwrite_warning(metric_name: str) -> str:
-    """Return the deterministic warning for an ordered duplicate definition."""
-    return f"Metric '{metric_name}' overwritten by a later definition in the same import"
+    Says when the later definition clears a label the earlier one set, as the
+    sync handler's overwrite warning does for the same file.
+    """
+    return (
+        f"Metric '{metric_name}' overwritten by a later definition in the same import"
+        f"{label_cleared_detail(earlier, later)}"
+    )
 
 
 def _durable_error(index: int, osi_metric: OsiMetric, error: ValueError) -> PlannedMetric:
@@ -242,7 +249,7 @@ def _build_offset_plan(
 ) -> OffsetPlanPayload:
     """Choose logical outcomes and exact write payloads before any mutation."""
     entries: list[PlannedMetric] = []
-    planned_names: set[str] = set()
+    planned: dict[str, MetricDefinition] = {}
     approval_results: dict[str, str | None] = {}
     table_results: dict[tuple[str, str], str | None] = {}
 
@@ -266,9 +273,11 @@ def _build_offset_plan(
             entries.append(_durable_error(source_index, osi_metric, exc))
             continue
 
-        if metric_definition.name in planned_names:
+        if metric_definition.name in planned:
             disposition = MetricDisposition.UPDATE
-            warning = _duplicate_overwrite_warning(metric_definition.name)
+            warning = _duplicate_overwrite_warning(
+                metric_definition.name, planned[metric_definition.name], metric_definition
+            )
         else:
             existing = neptune.get_metric(namespace_id, metric_definition.name)
             if existing is None:
@@ -276,8 +285,8 @@ def _build_offset_plan(
                 warning = None
             else:
                 disposition = MetricDisposition.UPDATE
-                warning = _overwrite_warning(metric_definition.name, existing)
-            planned_names.add(metric_definition.name)
+                warning = _overwrite_warning(metric_definition.name, existing, metric_definition)
+        planned[metric_definition.name] = metric_definition
 
         entries.append(
             PlannedMetric(
@@ -506,7 +515,8 @@ def _load_source_document(job: Mapping[str, Any], s3_key: str, metrics_total: in
 
     parse_result = parse_osi_yaml(content)
     if not parse_result.success:
-        raise InvalidImportSourceError(f"OSI YAML parse errors: {parse_result.errors}")
+        details = "; ".join(f"{e.path}: {e.message}" for e in parse_result.errors)
+        raise InvalidImportSourceError(f"OSI YAML parse errors: {details}")
     document = parse_result.document
     if document is None:
         raise InvalidImportSourceError("parsed import source did not contain an OSI document")
@@ -524,7 +534,8 @@ def _validate_datasets(namespace_id: str, job_id: str, offset: int, document: Os
     lookup = _get_lookup(namespace_id)
     resolution = resolve_datasets(document.datasets, lookup)
     if not resolution.success:
-        raise InvalidImportSourceError(f"dataset resolution failed: {resolution.errors}")
+        details = "; ".join(f"Dataset '{e.dataset_name}': {e.reason}" for e in resolution.errors)
+        raise InvalidImportSourceError(f"dataset resolution failed: {details}")
     logger.info("import_datasets_resolved", job_id=job_id, count=len(resolution.resolved))
 
 
@@ -690,7 +701,9 @@ def _process_chunk(msg: ImportQueueMessage | dict[str, Any]) -> None:
             offset=offset,
             error=str(exc),
         )
-        _fail_owned_import(namespace_id, job_id, offset, claim.token, str(exc))
+        # Stored on the job and returned by GetImportJob: fixed text only, the
+        # cause (DynamoDB / catalog error) stays in the log above.
+        _fail_owned_import(namespace_id, job_id, offset, claim.token, SOURCE_VALIDATION_UNAVAILABLE_ERROR)
         return
 
     if len(plan.entries) != expected_entry_count:

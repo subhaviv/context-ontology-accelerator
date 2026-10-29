@@ -43,7 +43,7 @@ from .tier2.strategy import (
     normalize_strategy_option,
 )
 from .tier3.knowledge_retriever import VECTOR_SEARCH_TIMEOUT_S, KnowledgeRetriever
-from .trace import TraceCollector
+from .trace import TraceCollector, client_error_detail
 
 logger = structlog.get_logger(__name__)
 
@@ -382,6 +382,24 @@ class Orchestrator:
         keeps its own firewall.evaluate() gate; this runs upstream of dispatch.
         """
         return self._firewall.authorize_namespace(namespace, profile)
+
+    def _resolve_include_debug_info(self, options: dict | None, namespace: str, profile: dict | None) -> bool:
+        """Effective includeDebugInfo = caller opt-in AND viewNamespace right (#1166).
+
+        The SQL/SPARQL artifacts are returned only when the caller BOTH asked for
+        them (``includeDebugInfo=true``) AND holds ``viewNamespace`` on the
+        namespace — the SAME Cedar right that gates reading a source's
+        table/column schema in the Sources/Tables view. A caller who can already
+        see the schema gains no new disclosure from the query that touches it; a
+        caller who cannot is denied the artifacts even when they pass the flag.
+        Fails CLOSED (the firewall returns False on evaluator error), so a policy
+        failure withholds artifacts rather than leaking them. Decoupling the
+        default (hidden) from this gate keeps the AppSec default-withhold posture.
+        """
+        requested = (options or {}).get("includeDebugInfo", False) is True
+        if not requested:
+            return False
+        return self._firewall.can_view_namespace(namespace, profile)
 
     # ── Tier run/skip decisions ──────────────────────────────────────
     # Each tier's guard is a named predicate so resolve() reads as a plain
@@ -745,7 +763,7 @@ class Orchestrator:
             namespace,
             profile,
             model_id=model_id,
-            include_debug_info=options.get("includeDebugInfo", False) is True,
+            include_debug_info=self._resolve_include_debug_info(options, namespace, profile),
         )
         return response, result.sparql or None
 
@@ -980,7 +998,7 @@ class Orchestrator:
                     StepId.T1_FIREWALL,
                     "error",
                     fw_ms,
-                    detail={"error": type(e).__name__, "message": str(e)[:120]},
+                    detail=client_error_detail(e),
                     tool_used="sql-firewall",
                 )
                 logger.warning(
@@ -1064,11 +1082,7 @@ class Orchestrator:
                     StepId.T1_EXECUTE,
                     "error",
                     exec_ms,
-                    detail={
-                        "error": type(e).__name__,
-                        "message": str(e)[:120],
-                        "timeoutSeconds": timeout_seconds,
-                    },
+                    detail=client_error_detail(e, timeoutSeconds=timeout_seconds),
                     tool_used="sql-engine",
                 )
                 logger.warning(
@@ -1080,12 +1094,15 @@ class Orchestrator:
                     timeout_seconds=timeout_seconds,
                 )
                 # A cross-namespace SQL reference is a policy denial, not a data-source
-                # outage: surface it as 403 with its (non-sensitive) policy reason.
+                # outage: surface it as 403 with a fixed policy reason (never the
+                # executor's message, which is not ours to vouch for).
                 # Detected via the wrapped firewall cause so the executor keeps raising
                 # its own {Athena,Redshift}QueryError (unit-test contract) and generic
                 # executor failures stay masked as DataSourceUnavailableError.
                 if isinstance(e.__cause__, NamespaceSQLScopeError):
-                    raise NamespaceScopeDeniedError(str(e)) from e
+                    raise NamespaceScopeDeniedError(
+                        "Access denied: SQL reference is outside the requested namespace"
+                    ) from e
                 raise DataSourceUnavailableError(
                     f"Metric '{metric_match.metric_name}' execution failed: {type(e).__name__}"
                 ) from e
@@ -1122,7 +1139,7 @@ class Orchestrator:
                     match_confidence=metric_match.match_confidence,
                     match_source=metric_match.match_source,
                     model_id=model_id,
-                    include_debug_info=options.get("includeDebugInfo", False) is True,
+                    include_debug_info=self._resolve_include_debug_info(options, namespace, profile),
                 )
             ), None
 
@@ -1271,7 +1288,19 @@ class Orchestrator:
                 degraded_sources=tier3_result.degraded_sources or None,
                 model_id=model_id,
                 partial=tier3_result.partial,
+                # Label by MODE, not tier: Deep Reasoning resolves at tier=3 but is
+                # a distinct execution mode; without this the console mislabels it
+                # as Standard mode's "Tier 3 — Knowledge Retrieval" (#1166).
+                execution_mode=Mode.DEEP_REASONING.value,
+                # Return the SQL/SPARQL the agentic loop ran, same as Standard mode
+                # does — gated by the same includeDebugInfo opt-in (#1166).
+                query_used=tier3_result.query_used,
+                sparql_generated=tier3_result.sparql_generated,
+                include_debug_info=self._resolve_include_debug_info(options, namespace, profile),
             )
+            # Also keep the free-form metadata["mode"] stamp for request logs / eval
+            # attribution (unchanged observability contract); execution_mode above is
+            # the structural field the console reads (#1166).
             result.metadata = {**(result.metadata or {}), "mode": Mode.DEEP_REASONING.value}
             return InvokeResponse(result=result)
 

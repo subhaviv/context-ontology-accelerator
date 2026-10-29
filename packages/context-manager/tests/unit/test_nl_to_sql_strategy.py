@@ -28,6 +28,7 @@ def _make_nl_to_sql_result(
     expanded_tables: list[str] | None = None,
     data_source_id: str = "ds-1",
     table_sources: dict[str, str] | None = None,
+    table_candidates: dict[str, list[str]] | None = None,
 ):
     """Build a mock NLtoSQLResult."""
     result = MagicMock()
@@ -42,6 +43,7 @@ def _make_nl_to_sql_result(
     # Explicit, not a MagicMock attribute: cross-source qualification reads this
     # per shot, and an auto-created mock would fabricate table->source entries.
     result.table_sources = table_sources or {}
+    result.table_candidates = table_candidates or {}
     return result
 
 
@@ -224,6 +226,36 @@ class TestNLtoSQLStrategyResolve:
         assert result.truncated is False
 
     @pytest.mark.asyncio
+    async def test_table_placements_resolve_through_the_executor(
+        self, strategy, sql_generator, firewall, query_executor
+    ):
+        sql_generator.generate.return_value = _make_nl_to_sql_result()
+        firewall.evaluate.return_value = _make_firewall_result()
+        query_executor.execute.return_value = _make_exec_result()
+        query_executor.resolve_table_placements.return_value = {"orders": ("ds-1", "sales_db")}
+
+        await strategy.resolve("How many orders?", "ns1", _make_context())
+
+        resolver = sql_generator.generate.call_args.kwargs["table_placements"]
+        assert await resolver({"orders": ""}) == {"orders": ("ds-1", "sales_db")}
+        query_executor.resolve_table_placements.assert_awaited_once_with("ns1", {"orders": ""})
+
+    @pytest.mark.asyncio
+    async def test_same_name_databases_resolve_through_the_executor(
+        self, strategy, sql_generator, firewall, query_executor
+    ):
+        sql_generator.generate.return_value = _make_nl_to_sql_result()
+        firewall.evaluate.return_value = _make_firewall_result()
+        query_executor.execute.return_value = _make_exec_result()
+        query_executor.resolve_same_name_databases.return_value = {"ds": {"db1": "s1", "db2": "s2"}}
+
+        await strategy.resolve("How many orders?", "ns1", _make_context())
+
+        resolver = sql_generator.generate.call_args.kwargs["same_name_databases"]
+        assert await resolver(["ds"]) == {"ds": {"db1": "s1", "db2": "s2"}}
+        query_executor.resolve_same_name_databases.assert_awaited_once_with("ns1", ["ds"])
+
+    @pytest.mark.asyncio
     async def test_correct_strategy_result_fields(self, strategy, sql_generator, firewall, query_executor):
         sql_generator.generate.return_value = _make_nl_to_sql_result(
             retrieved_tables=["orders", "products"],
@@ -311,6 +343,9 @@ class TestNLtoSQLStrategyResolve:
         query_executor.execute.assert_not_called()
         fw_err = [s for s in context.trace.steps if s.step == "t2.sql.firewall" and s.status == "error"]
         assert fw_err, "expected a t2.sql.firewall/error step for unsafe SQL"
+        # The trace reaches the client: a fixed code, never the firewall message
+        # (which quotes the offending statement).
+        assert fw_err[0].detail == {"error": "unsafe_sql"}
 
     @pytest.mark.asyncio
     async def test_firewall_allows_with_rewritten_sql_executes_authorized_sql(
@@ -393,6 +428,43 @@ class TestNLtoSQLStrategyResolve:
         # question + ddl_context are passed positionally.
         assert args[0] == "How many orders?"
         assert args[1] == "CREATE TABLE orders (id int);"
+
+    @pytest.mark.asyncio
+    async def test_correction_receives_the_statement_that_actually_ran(
+        self, strategy, sql_generator, firewall, query_executor
+    ):
+        """On a cross-source query the executed statement is the QUALIFIED rewrite
+        (catalog/schema prefixes, single-line rendering), not the firewall-authorized
+        text. The engine reports its error line/column against the executed statement,
+        so the correction prompt must carry that text — otherwise the model is pointed
+        at coordinates inside a statement it never saw."""
+        authorized = "SELECT count(*) FROM orders JOIN crm.customers ON TRUE"
+        executed = 'SELECT count(*) FROM "awsdatacatalog"."sales"."orders" JOIN "pg_cat"."crm"."customers" ON TRUE'
+        # Two real sources: that is what makes ``_prepare_sql`` run the qualifier at all.
+        sql_generator.generate.return_value = _make_nl_to_sql_result(
+            sql=authorized, table_sources={"orders": "ds-glue", "customers": "ds-pg"}
+        )
+        sql_generator.correct.return_value = ("SELECT count(*) FROM orders", 0.9)
+        firewall.evaluate.side_effect = [
+            _make_firewall_result(authorized_sql=authorized),
+            _make_firewall_result(authorized_sql="SELECT count(*) FROM orders"),
+        ]
+        query_executor.execute.side_effect = [
+            Exception("line 1:28: Table 'awsdatacatalog.sales.orders' does not exist"),
+            _make_exec_result(row_count=3),
+        ]
+        prepare = AsyncMock(side_effect=[PreparedSQL(sql=executed), PreparedSQL(sql="SELECT count(*) FROM orders")])
+        with patch("coa_serve.tier2.nl_to_sql.strategy.prepare_execution_sql", prepare):
+            result = await strategy.resolve("How many orders?", "ns1", _make_context())
+
+        assert result is not None
+        assert result.row_count == 3
+        # Bind the two seams: shot 1 executed the qualified text, shot 2 the corrected one...
+        assert query_executor.execute.call_args_list[0].args[0] == executed
+        assert query_executor.execute.call_args_list[1].args[0] == "SELECT count(*) FROM orders"
+        # ...and correct() was handed exactly the text that shot 1 executed.
+        _, kwargs = sql_generator.correct.call_args
+        assert kwargs["failed_sql"] == executed
 
     @pytest.mark.asyncio
     async def test_no_correction_when_first_shot_succeeds(self, strategy, sql_generator, firewall, query_executor):
@@ -764,12 +836,202 @@ class TestNLtoSQLCrossSourceQualification:
 
         query_executor.execute.assert_not_awaited()
 
+    # Same-name tables in two databases: what the generator hands over for two
+    # `customers` classes whose databases are known (see SQLGenerator.generate).
+    _SAME_NAME_SOURCES = {
+        "customers": "__ambiguous__",
+        "sales_db.customers": "ds-sales",
+        "crm_db.customers": "ds-crm",
+    }
+    _SAME_NAME_CANDIDATES = {"customers": ["crm_db.customers", "sales_db.customers"]}
+
+    def _same_name_strategy(self, sql):
+        sql_generator, firewall, query_executor = AsyncMock(), MagicMock(), AsyncMock()
+        sql_generator.generate.return_value = _make_nl_to_sql_result(
+            sql=sql,
+            table_sources=dict(self._SAME_NAME_SOURCES),
+            table_candidates=dict(self._SAME_NAME_CANDIDATES),
+            data_source_id="",
+        )
+        firewall.evaluate.return_value = _make_firewall_result(authorized_sql=sql)
+        query_executor.execute.return_value = _make_exec_result()
+        registry = self._registry(
+            {"ds-sales": {"glueDatabaseName": "sales_db"}, "ds-crm": {"glueDatabaseName": "crm_db"}}
+        )
+        return self._strategy(sql_generator, firewall, query_executor, registry), query_executor
+
+    @pytest.mark.asyncio
+    async def test_bare_same_name_reference_is_refused_naming_the_candidates(self):
+        strategy, query_executor = self._same_name_strategy("SELECT COUNT(*) FROM customers WHERE tier = 'gold'")
+
+        with pytest.raises(AmbiguousReferenceError) as err:
+            await strategy.resolve("How many customers have gold tier?", "ns1", _make_context())
+
+        assert "crm_db.customers" in str(err.value)
+        assert "sales_db.customers" in str(err.value)
+        query_executor.execute.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_qualified_same_name_reference_runs_against_that_database(self):
+        strategy, query_executor = self._same_name_strategy("SELECT COUNT(*) FROM crm_db.customers WHERE tier = 'gold'")
+
+        await strategy.resolve("How many customers have gold tier?", "ns1", _make_context())
+
+        executed = query_executor.execute.call_args.args[0].replace('"', "").lower()
+        # The name is shared across sources, so the reference carries its catalog too.
+        assert "awsdatacatalog.crm_db.customers" in executed
+        assert "sales_db" not in executed
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "SELECT COUNT(*) FROM wrongcat.crm_db.customers WHERE tier = 'gold'",
+            "SELECT COUNT(*) FROM other_db.customers WHERE tier = 'gold'",
+            "SELECT * FROM crm_db.customers c JOIN wrongcat.crm_db.customers w ON w.customer_id = c.customer_id",
+        ],
+        ids=["other-catalog", "other-database", "other-catalog-beside-the-right-one"],
+    )
+    async def test_same_name_reference_naming_no_candidate_is_refused(self, sql):
+        strategy, query_executor = self._same_name_strategy(sql)
+
+        with pytest.raises(AmbiguousReferenceError) as err:
+            await strategy.resolve("How many customers have gold tier?", "ns1", _make_context())
+
+        assert "crm_db.customers,sales_db.customers" in str(err.value)
+        query_executor.execute.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_cte_named_like_the_shared_table_runs_against_the_qualified_one(self):
+        # A common table expression named after its source table is not a bare
+        # reference to the shared name: the query names crm_db.customers and runs.
+        sql = "WITH customers AS (SELECT * FROM crm_db.customers) SELECT COUNT(*) FROM customers"
+        strategy, query_executor = self._same_name_strategy(sql)
+
+        await strategy.resolve("How many CRM customers are there?", "ns1", _make_context())
+
+        executed = query_executor.execute.call_args.args[0].replace('"', "").lower()
+        assert "from awsdatacatalog.crm_db.customers" in executed
+        assert "sales_db" not in executed
+
+    @pytest.mark.asyncio
+    async def test_cte_named_like_the_shared_table_over_a_bare_reference_is_refused(self):
+        sql = "WITH customers AS (SELECT * FROM customers) SELECT COUNT(*) FROM customers"
+        strategy, query_executor = self._same_name_strategy(sql)
+
+        with pytest.raises(AmbiguousReferenceError) as err:
+            await strategy.resolve("How many customers are there?", "ns1", _make_context())
+
+        assert "crm_db.customers,sales_db.customers" in str(err.value)
+        query_executor.execute.assert_not_awaited()
+
+    def _one_of_three_strategy(self, sql, writer=None):
+        """The real generator over a namespace with one `ds` per study, of which retrieval returns one."""
+        from coa_serve.clients.base import ConverseResult, VectorHit
+        from coa_serve.tier2.nl_to_sql.sql_generator import SQLGenerator
+
+        llm, vector = AsyncMock(), AsyncMock()
+        llm.embed.return_value = [0.1] * 8
+        llm.converse.return_value = ConverseResult(text=f"```sql\n{sql}\n```\nConfidence: 0.9")
+        if writer is not None:
+            llm.converse.side_effect = writer
+        vector.count_documents.return_value = 1
+        vector.search.return_value = [
+            VectorHit(
+                id="ds-102",
+                text="Table: ds | Columns: usubjid (varchar), dsdecod (varchar)",
+                score=0.9,
+                metadata={"data_source_id": "src-102", "uri": "urn:x#Ds_102"},
+            )
+        ]
+        databases = {"src-101": "sdtm_cs101", "src-102": "sdtm_cs102", "src-103": "sdtm_cs103"}
+        firewall, query_executor = MagicMock(), AsyncMock()
+        firewall.evaluate.side_effect = lambda written, *a, **k: _make_firewall_result(authorized_sql=written)
+        query_executor.execute.return_value = _make_exec_result()
+        query_executor.resolve_table_placements.side_effect = lambda ns, ts: {
+            t: (s, databases[s]) for t, s in ts.items() if s in databases
+        }
+        query_executor.resolve_same_name_databases.side_effect = lambda ns, tables: (
+            {"ds": {db: src for src, db in databases.items()}} if "ds" in tables else {}
+        )
+        registry = self._registry({src: {"glueDatabaseName": db} for src, db in databases.items()})
+        generator = SQLGenerator(llm_client=llm, vector_client=vector)
+        return self._strategy(generator, firewall, query_executor, registry), query_executor
+
+    @pytest.mark.asyncio
+    async def test_one_retrieved_copy_of_a_shared_name_is_refused_naming_every_database(self):
+        # The customer's case: only one study's `ds` was retrieved, and the query
+        # returned that study's 60 rows as the count across all studies.
+        strategy, query_executor = self._one_of_three_strategy("SELECT count(*) FROM ds")
+
+        with pytest.raises(AmbiguousReferenceError) as err:
+            await strategy.resolve("How many patients enrolled across all studies?", "ns1", _make_context())
+
+        assert "sdtm_cs101.ds,sdtm_cs102.ds,sdtm_cs103.ds" in str(err.value)
+        query_executor.execute.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_unretrieved_copy_named_by_its_database_runs_against_it(self):
+        strategy, query_executor = self._one_of_three_strategy("SELECT count(*) FROM sdtm_cs101.ds")
+
+        await strategy.resolve("How many patients enrolled in study CS-101?", "ns1", _make_context())
+
+        executed = query_executor.execute.call_args.args[0].replace('"', "").lower()
+        assert "from awsdatacatalog.sdtm_cs101.ds" in executed
+
+    @staticmethod
+    async def _schema_reading_writer(prompt, **kwargs):
+        """``count(*)`` over ``ds``, qualified only with a database the question names and the prompt lists."""
+        from coa_serve.clients.base import ConverseResult
+
+        question = kwargs.get("guard_content") or ""
+        line = next((ln for ln in prompt.splitlines() if ln.startswith("Table: ds |")), "")
+        segment = line.split(" | ")[1] if " | " in line else ""
+        listed = []
+        if segment.startswith(("Database: ", "Databases: ")):
+            listed = [d.strip() for d in segment.split(": ", 1)[1].split(" (", 1)[0].split(",")]
+        named = next((d for d in listed if d and d in question), "")
+        table = f"{named}.ds" if named else "ds"
+        return ConverseResult(text=f"```sql\nSELECT count(*) FROM {table}\n```\nConfidence: 0.9")
+
+    @pytest.mark.asyncio
+    async def test_question_naming_one_database_of_a_partial_name_runs_against_it(self):
+        # The live failure: the question names sdtm_cs103, but the writer was never
+        # told which databases hold `ds`, wrote it bare, and the query was refused.
+        strategy, query_executor = self._one_of_three_strategy("", writer=self._schema_reading_writer)
+
+        await strategy.resolve(
+            "How many subjects are in the ds table of the sdtm_cs103 database?", "ns1", _make_context()
+        )
+
+        executed = query_executor.execute.call_args.args[0].replace('"', "").lower()
+        assert "from awsdatacatalog.sdtm_cs103.ds" in executed
+
+    @pytest.mark.asyncio
+    async def test_across_all_question_with_the_database_list_is_still_refused(self):
+        strategy, query_executor = self._one_of_three_strategy("", writer=self._schema_reading_writer)
+
+        with pytest.raises(AmbiguousReferenceError) as err:
+            await strategy.resolve("How many subjects are there across all studies?", "ns1", _make_context())
+
+        assert "sdtm_cs101.ds,sdtm_cs102.ds,sdtm_cs103.ds" in str(err.value)
+        query_executor.execute.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_glue_catalog_qualified_same_name_reference_runs_unchanged(self):
+        sql = 'SELECT COUNT(*) FROM "AwsDataCatalog"."crm_db"."customers" WHERE tier = 1'
+        strategy, query_executor = self._same_name_strategy(sql)
+
+        await strategy.resolve("How many customers have gold tier?", "ns1", _make_context())
+
+        assert query_executor.execute.call_args.args[0] == sql
+
     @pytest.mark.asyncio
     async def test_firewall_sees_the_unqualified_sql(self):
         """The rewrite MUST run downstream of authorization, on this path too.
 
-        Cedar receives ``SQLFirewall.extract_tables()`` output verbatim, so
-        qualifying first would change the strings a table-scoped policy matches on.
+        Database-qualified grant entries and Cedar see the references the SQL
+        makes, so qualifying first would change what they match on.
         The VKG path has the same assertion; keeping both makes the ordering
         executable rather than a comment in one module.
         """

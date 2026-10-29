@@ -30,7 +30,7 @@ from coa_common.domain_models import (
 from coa_common.metadata_store.reader import read_assets_for_datasource
 
 from coa_sources.database.enrichment.bedrock_client import BedrockClient
-from coa_sources.database.enrichment.prompts import build_system_prompt, build_user_prompt
+from coa_sources.database.enrichment.prompts import build_system_prompt, build_user_prompt_segments
 from coa_sources.database.pipeline.enrichment_metrics import (
     EnrichmentMetricEmitter,
 )
@@ -43,7 +43,8 @@ COLUMN_BATCH_THRESHOLD = 80
 MAX_WORKERS = 10
 # Throttle: a per-table publish would be one write per table on a 5000-table source.
 PROGRESS_PUBLISH_INTERVAL_SEC = 5.0
-TABLE_TIMEOUT_SEC = int(os.getenv("ENRICHMENT_TABLE_TIMEOUT_SEC", "90"))
+# A full 16384-token response takes about 60 s on Haiku-class models; 180 s leaves headroom.
+TABLE_TIMEOUT_SEC = int(os.getenv("ENRICHMENT_TABLE_TIMEOUT_SEC", "180"))
 GUARDRAIL_SSM_PARAM = os.getenv("GUARDRAIL_SSM_PARAM", "")
 
 
@@ -126,7 +127,6 @@ def _prepare_table_context(table: Table) -> dict:
         "existing_pk": existing_pk,
         "existing_fks": existing_fks,
         "extra_context": extra_context,
-        "extra_context_hint": "",
     }
 
 
@@ -474,13 +474,12 @@ def _call_bedrock(
     existing_pk: list[str] | None = None,
     existing_fks: list[dict] | None = None,
     extra_context: str = "",
-    extra_context_hint: str = "",
 ) -> tuple[dict, float, int, int]:
     """Build prompt and invoke Bedrock, returning (parsed, latency_ms, input_tokens, output_tokens).
 
     Emits per-call metrics (latency, tokens) via *emitter*.
     """
-    user_prompt = build_user_prompt(
+    user_prompt = build_user_prompt_segments(
         table_name,
         database,
         columns,
@@ -488,13 +487,10 @@ def _call_bedrock(
         existing_pk=existing_pk,
         existing_fks=existing_fks,
         extra_context=extra_context,
-        extra_context_hint=extra_context_hint,
     )
-    max_tokens = 4096
-    if extra_context:
-        max_tokens = 16384 if extra_context_hint else 8192
-
-    result = client.invoke(system_prompt, user_prompt, max_tokens=max_tokens)
+    # Output grows with column count (about 100 tokens per column), so a fixed 16384 ceiling
+    # covers a full 50-column batch and any unbatched table up to the 80-column threshold.
+    result = client.invoke(system_prompt, user_prompt, max_tokens=16384)
 
     emitter.emit_bedrock_invocation_metrics(
         stage="Pass1",
