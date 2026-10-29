@@ -4,7 +4,10 @@
 import * as cdk from "aws-cdk-lib";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import { Template, Match } from "aws-cdk-lib/assertions";
-import { ServeToolStack } from "../../lib/stacks/services/serve-tool-stack";
+import {
+  ServeToolStack,
+  serveToolNames,
+} from "../../lib/stacks/services/serve-tool-stack";
 import { DEFAULT_RESOURCE_PREFIX, DEFAULT_ENV } from "../../lib/constants";
 
 jest.mock("../../lib/utils/python-bundling", () => ({
@@ -18,47 +21,85 @@ const TEST_CONTEXT = {
   "aws:cdk:bundling-stacks": [],
 };
 
+const TOOLS = ["query", "translate_sparql", "rag_retrieval", "graph_traversal"];
 const GATEWAY_ROLE = "arn:aws:iam::111122223333:role/workstream-gateway-role";
 
-function synth(props: ConstructorParameters<typeof ServeToolStack>[2] = {}) {
+function build(props: ConstructorParameters<typeof ServeToolStack>[2] = {}) {
   const app = new cdk.App({ context: TEST_CONTEXT });
   const stack = new ServeToolStack(app, "TestServeTool", {
     env: { account: "123456789012", region: "us-east-1" },
     ...props,
   });
-  return Template.fromStack(stack);
+  return { stack, template: Template.fromStack(stack) };
 }
 
+type Res = { Properties: Record<string, any> };
+
 describe("ServeToolStack", () => {
-  const template = synth({
-    invokerPrincipalArns: [GATEWAY_ROLE],
-    gatewayIdentities: {
-      "gw-beacon": { userId: "beacon-agent", groups: ["beacon-agents"] },
-    },
+  const { stack, template } = build();
+  const functions = template.findResources("AWS::Lambda::Function") as Record<
+    string,
+    Res
+  >;
+  const agentFns = Object.entries(functions).filter(
+    ([, f]) => f.Properties.Environment.Variables.SERVE_TOOL_MODE === "agent",
+  );
+
+  it("reads the 4 tools from tool-schemas.json", () => {
+    expect(serveToolNames()).toEqual(TOOLS);
   });
 
-  it("creates an agent and a user Lambda in their modes", () => {
-    for (const mode of ["agent", "user"]) {
-      template.hasResourceProperties("AWS::Lambda::Function", {
-        Handler: "serve_tool_handler.handler",
-        Environment: {
-          Variables: Match.objectLike({ SERVE_TOOL_MODE: mode }),
-        },
+  it("creates one agent function per tool, pinned by SERVE_TOOL_NAME", () => {
+    expect(agentFns).toHaveLength(4);
+    const names = agentFns.map(
+      ([, f]) => f.Properties.Environment.Variables.SERVE_TOOL_NAME,
+    );
+    expect(names.sort()).toEqual([...TOOLS].sort());
+    for (const [, f] of agentFns) {
+      expect(f.Properties.FunctionName.length).toBeLessThanOrEqual(64);
+      expect(f.Properties.FunctionName).not.toContain("_");
+    }
+  });
+
+  it("runs every agent function as the fixed factory identity", () => {
+    for (const [, f] of agentFns) {
+      expect(f.Properties.Environment.Variables).toMatchObject({
+        COA_AGENT_USER_ID: "factory-agent",
+        COA_AGENT_GROUPS: "factory-agents",
       });
     }
   });
 
-  it("publishes a PROD alias on each function", () => {
+  it("keeps one user function", () => {
     template.resourcePropertiesCountIs(
-      "AWS::Lambda::Alias",
-      { Name: "PROD" },
-      2,
+      "AWS::Lambda::Function",
+      {
+        Environment: {
+          Variables: Match.objectLike({ SERVE_TOOL_MODE: "user" }),
+        },
+      },
+      1,
     );
   });
 
-  it("grants InvokeAgentRuntime exactly once (agent Lambda, serve-agent only)", () => {
-    const policies = template.findResources("AWS::IAM::Policy");
-    const invokeStatements = Object.values(policies).flatMap((p) =>
+  it("publishes 5 PROD aliases with unique ARNs, one per agent tool", () => {
+    template.resourcePropertiesCountIs(
+      "AWS::Lambda::Alias",
+      { Name: "PROD" },
+      5,
+    );
+    const arns = TOOLS.map((t) =>
+      stack.resolve(stack.toolAliases[t].functionArn),
+    );
+    expect(new Set(arns.map((a) => JSON.stringify(a))).size).toBe(4);
+  });
+
+  it("scopes every agent role to InvokeAgentRuntime on serve-agent only", () => {
+    const policies = template.findResources("AWS::IAM::Policy") as Record<
+      string,
+      Res
+    >;
+    const invoke = Object.values(policies).flatMap((p) =>
       (p.Properties.PolicyDocument.Statement as { Action: unknown }[]).filter(
         (s) =>
           ([] as unknown[])
@@ -66,35 +107,79 @@ describe("ServeToolStack", () => {
             .includes("bedrock-agentcore:InvokeAgentRuntime"),
       ),
     );
-    expect(invokeStatements).toHaveLength(1);
-    const stmt = JSON.stringify(invokeStatements[0]);
-    expect(stmt).toContain("serveagentruntimearn");
-    expect(stmt).not.toContain("serveruntimearn");
+    expect(invoke).toHaveLength(4);
+    for (const stmt of invoke) {
+      const s = JSON.stringify(stmt);
+      expect(s).toContain("serveagentruntimearn");
+      expect(s).not.toContain("serveruntimearn");
+    }
+    // Each agent function's role carries exactly one such statement.
+    const roleRefs = new Set(
+      Object.values(policies)
+        .filter((p) =>
+          JSON.stringify(p.Properties.PolicyDocument).includes(
+            "InvokeAgentRuntime",
+          ),
+        )
+        .map((p) => JSON.stringify(p.Properties.Roles)),
+    );
+    expect(roleRefs.size).toBe(4);
   });
 
-  it("admits the configured gateway role on both PROD aliases", () => {
-    template.resourcePropertiesCountIs(
+  it("has no gateway identity map", () => {
+    const params = template.findResources("AWS::SSM::Parameter") as Record<
+      string,
+      Res
+    >;
+    for (const p of Object.values(params)) {
+      expect(JSON.stringify(p.Properties.Name)).not.toContain(
+        "gateway-identities",
+      );
+    }
+    expect(JSON.stringify(template.toJSON())).not.toContain("GATEWAY_IDENTITY");
+  });
+
+  it("outputs each tool's alias ARN plus a tool -> ARN map", () => {
+    const outputs = template.findOutputs("*");
+    for (const id of [
+      "ToolAliasArnQuery",
+      "ToolAliasArnTranslateSparql",
+      "ToolAliasArnRagRetrieval",
+      "ToolAliasArnGraphTraversal",
+      "ToolAliasArns",
+      "UserAliasArn",
+    ]) {
+      expect(outputs[id]).toBeDefined();
+    }
+    const map = JSON.stringify(outputs.ToolAliasArns.Value);
+    for (const t of TOOLS) expect(map).toContain(t);
+  });
+
+  it("adds no invoke permissions by default", () => {
+    template.resourceCountIs("AWS::Lambda::Permission", 0);
+  });
+
+  it("admits configured invokers on every PROD alias", () => {
+    const { template: t } = build({ invokerPrincipalArns: [GATEWAY_ROLE] });
+    t.resourcePropertiesCountIs(
       "AWS::Lambda::Permission",
       { Action: "lambda:InvokeFunction", Principal: GATEWAY_ROLE },
-      2,
+      5,
     );
   });
 
-  it("writes the gateway identity map to SSM", () => {
-    template.hasResourceProperties("AWS::SSM::Parameter", {
-      Name: Match.stringLikeRegexp("/serve-tool/gateway-identities$"),
-      Value: JSON.stringify({
-        "gw-beacon": { userId: "beacon-agent", groups: ["beacon-agents"] },
-      }),
+  it("honours an overridden identity", () => {
+    const { template: t } = build({
+      agentUserId: "other",
+      agentGroups: ["g1", "g2"],
     });
-  });
-
-  it("defaults to an empty map and no invoke permissions", () => {
-    const bare = synth();
-    bare.hasResourceProperties("AWS::SSM::Parameter", {
-      Name: Match.stringLikeRegexp("/serve-tool/gateway-identities$"),
-      Value: "{}",
+    t.hasResourceProperties("AWS::Lambda::Function", {
+      Environment: {
+        Variables: Match.objectLike({
+          COA_AGENT_USER_ID: "other",
+          COA_AGENT_GROUPS: "g1,g2",
+        }),
+      },
     });
-    bare.resourceCountIs("AWS::Lambda::Permission", 0);
   });
 });

@@ -37,19 +37,7 @@ def _jwt(sub: str) -> str:
 def _env(monkeypatch):
     monkeypatch.setenv("AWS_REGION", "us-east-1")
     monkeypatch.setenv("SERVE_RUNTIME_ARN", "arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/serve-x")
-    monkeypatch.setenv("GATEWAY_IDENTITY_PARAM", "/coa/serve-tool/gateway-identities")
     monkeypatch.setenv("ID_TOKEN_HEADER", ID_HEADER)
-    h._gateway_map_cache.update(value=None, loaded_at=0.0)
-
-
-@pytest.fixture
-def gateway_map():
-    with patch.object(
-        h,
-        "_load_gateway_map",
-        return_value={"gw-beacon": {"userId": "beacon-agent", "groups": ["beacon-agents"]}},
-    ):
-        yield
 
 
 @pytest.fixture
@@ -58,32 +46,63 @@ def invoke():
         yield m
 
 
+@pytest.fixture
+def agent_env(monkeypatch):
+    """Agent-mode function env: fixed identity; the test sets SERVE_TOOL_NAME."""
+    monkeypatch.setenv("SERVE_TOOL_MODE", "agent")
+    monkeypatch.setenv("COA_AGENT_USER_ID", "factory-agent")
+    monkeypatch.setenv("COA_AGENT_GROUPS", "factory-agents")
+
+    def _tool(name: str) -> None:
+        monkeypatch.setenv("SERVE_TOOL_NAME", name)
+
+    _tool("query")
+    return _tool
+
+
+FIXED_PROFILE = {"userId": "factory-agent", "groups": ["factory-agents"], "namespace": "ns1"}
+
+
 @pytest.mark.unit
 class TestAgentMode:
-    @pytest.fixture(autouse=True)
-    def _mode(self, monkeypatch):
-        monkeypatch.setenv("SERVE_TOOL_MODE", "agent")
-
-    def test_identity_comes_from_gateway_map_not_arguments(self, gateway_map, invoke):
-        event = {"query": "q", "namespaceId": "ns1", "profile": {"groups": ["Admin"]}}
-        out = h.handler(event, _ctx())
+    def test_runs_as_fixed_identity_ignoring_arguments_and_gateway(self, agent_env, invoke):
+        event = {"query": "q", "namespaceId": "ns1", "profile": {"userId": "root", "groups": ["Admin"]}}
+        out = h.handler(event, _ctx(gateway="any-gateway"))
         assert out == {"result": {"rows": []}, "requestId": "r1"}
         payload = invoke.call_args.args[0]
-        assert payload["profile"] == {"userId": "beacon-agent", "groups": ["beacon-agents"], "namespace": "ns1"}
+        assert payload["profile"] == FIXED_PROFILE
         assert invoke.call_args.kwargs["bearer"] is None
+        assert invoke.call_args.kwargs["session_principal"] == "factory-agent"
 
-    def test_unmapped_gateway_is_refused(self, gateway_map, invoke):
-        out = h.handler({"query": "q", "namespaceId": "ns1"}, _ctx(gateway="gw-other"))
-        assert out["error"]["status"] == 403
+    def test_works_without_any_gateway_context(self, agent_env, invoke):
+        assert "error" not in h.handler({"query": "q", "namespaceId": "ns1"}, None)
+
+    def test_tool_comes_from_env_not_gateway_tool_name(self, agent_env, invoke):
+        agent_env("translate_sparql")
+        h.handler({"query": "q", "namespaceId": "ns1"}, _ctx(tool="t___graph_traversal"))
+        assert invoke.call_args.args[0]["action"] == "translate"
+
+    @pytest.mark.parametrize("name", ["", "describe_schema", "query "])
+    def test_unknown_serve_tool_name_is_refused(self, agent_env, invoke, name):
+        agent_env(name)
+        out = h.handler({"query": "q", "namespaceId": "ns1"}, _ctx())
+        assert out["error"]["status"] == 500
         invoke.assert_not_called()
 
-    def test_missing_gateway_context_is_refused(self, gateway_map, invoke):
-        ctx = SimpleNamespace(client_context=SimpleNamespace(custom={"bedrockAgentCoreToolName": "t___query"}))
-        assert h.handler({"query": "q", "namespaceId": "ns1"}, ctx)["error"]["status"] == 403
+    @pytest.mark.parametrize("var", ["COA_AGENT_USER_ID", "COA_AGENT_GROUPS"])
+    def test_missing_identity_env_is_refused(self, agent_env, invoke, monkeypatch, var):
+        monkeypatch.setenv(var, " ")
+        assert h.handler({"query": "q", "namespaceId": "ns1"}, _ctx())["error"]["status"] == 500
+        invoke.assert_not_called()
 
-    def test_entry_without_groups_is_refused(self, invoke):
-        with patch.object(h, "_load_gateway_map", return_value={"gw-beacon": {"userId": "x", "groups": []}}):
-            assert h.handler({"query": "q", "namespaceId": "ns1"}, _ctx())["error"]["status"] == 403
+    def test_groups_env_is_comma_split(self, agent_env, invoke, monkeypatch):
+        monkeypatch.setenv("COA_AGENT_GROUPS", "a, b,,")
+        h.handler({"query": "q", "namespaceId": "ns1"}, None)
+        assert invoke.call_args.args[0]["profile"]["groups"] == ["a", "b"]
+
+    def test_no_gateway_map_code_remains(self):
+        src = Path(h.__file__).read_text()
+        assert "gateway_map" not in src and "GATEWAY_IDENTITY" not in src
 
 
 @pytest.mark.unit
@@ -104,14 +123,24 @@ class TestUserMode:
         assert h.handler({"query": "q", "namespaceId": "ns1"}, _ctx(headers={}))["error"]["status"] == 401
         invoke.assert_not_called()
 
+    def test_tool_comes_from_gateway_tool_name(self, invoke):
+        token = _jwt("u")
+        h.handler(
+            {"query": "q", "namespaceId": "ns1"},
+            _ctx(tool="coa-rag___rag_retrieval", headers={ID_HEADER: token}),
+        )
+        assert invoke.call_args.args[0]["action"] == "kbSearch"
+
+    def test_unknown_tool(self, invoke):
+        out = h.handler({"namespaceId": "ns1"}, _ctx(tool="t___describe_schema", headers={ID_HEADER: _jwt("u")}))
+        assert out["error"]["status"] == 400
+
 
 @pytest.mark.unit
 class TestToolDispatch:
-    @pytest.fixture(autouse=True)
-    def _mode(self, monkeypatch):
-        monkeypatch.setenv("SERVE_TOOL_MODE", "agent")
+    """Each of the 4 agent functions builds its own serve request."""
 
-    def test_query_options(self, gateway_map, invoke):
+    def test_query_options(self, agent_env, invoke):
         event = {
             "query": "q",
             "namespaceId": "ns1",
@@ -120,27 +149,45 @@ class TestToolDispatch:
             "dimensions": [{"name": "region", "value": "EU"}],
             "timeoutMs": True,
         }
-        h.handler(event, _ctx())
-        opts = invoke.call_args.args[0]["options"]
-        assert opts == {"maxResults": 10000, "execute": False, "dimensions": {"region": "EU"}}
+        h.handler(event, None)
+        payload = invoke.call_args.args[0]
+        assert payload["query"] == "q" and payload["namespace"] == "ns1" and "action" not in payload
+        assert payload["options"] == {"maxResults": 10000, "execute": False, "dimensions": {"region": "EU"}}
 
-    def test_graph_traversal(self, gateway_map, invoke):
-        h.handler({"startUri": "urn:x", "namespaceId": "ns1", "maxDepth": 9}, _ctx(tool="coa-graph___graph_traversal"))
+    def test_translate_sparql(self, agent_env, invoke):
+        agent_env("translate_sparql")
+        h.handler({"query": "q", "namespaceId": "ns1"}, None)
+        assert invoke.call_args.args[0] == {
+            "action": "translate",
+            "query": "q",
+            "namespace": "ns1",
+            "profile": FIXED_PROFILE,
+        }
+
+    def test_rag_retrieval(self, agent_env, invoke):
+        agent_env("rag_retrieval")
+        h.handler({"query": "q", "namespaceId": "ns1", "topK": 500, "sourceFilter": ["d1"]}, None)
+        payload = invoke.call_args.args[0]
+        assert payload["action"] == "kbSearch"
+        assert payload["options"] == {"topK": 100, "sourceFilter": ["d1"]}
+
+    def test_graph_traversal(self, agent_env, invoke):
+        agent_env("graph_traversal")
+        h.handler({"startUri": "urn:x", "namespaceId": "ns1", "maxDepth": 9}, None)
         payload = invoke.call_args.args[0]
         assert payload["action"] == "graphTraverse"
-        assert payload["options"]["maxDepth"] == 5
+        assert payload["options"] == {"startUri": "urn:x", "maxDepth": 5, "direction": "both", "maxResults": 100}
 
-    def test_bad_direction(self, gateway_map, invoke):
-        out = h.handler(
-            {"startUri": "urn:x", "namespaceId": "ns1", "direction": "up"}, _ctx(tool="t___graph_traversal")
-        )
+    def test_bad_direction(self, agent_env, invoke):
+        agent_env("graph_traversal")
+        out = h.handler({"startUri": "urn:x", "namespaceId": "ns1", "direction": "up"}, None)
         assert out["error"]["status"] == 400
 
-    def test_unknown_tool(self, gateway_map, invoke):
-        assert h.handler({"namespaceId": "ns1"}, _ctx(tool="t___describe_schema"))["error"]["status"] == 400
+    def test_missing_required_argument(self, agent_env, invoke):
+        assert h.handler({"namespaceId": "ns1"}, None)["error"]["status"] == 400
 
-    def test_missing_namespace(self, gateway_map, invoke):
-        assert h.handler({"query": "q"}, _ctx())["error"]["status"] == 400
+    def test_missing_namespace(self, agent_env, invoke):
+        assert h.handler({"query": "q"}, None)["error"]["status"] == 400
 
     def test_bad_mode(self, monkeypatch, invoke):
         monkeypatch.setenv("SERVE_TOOL_MODE", "")

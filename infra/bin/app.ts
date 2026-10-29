@@ -596,10 +596,10 @@ async function deploy(): Promise<void> {
     agentMcp.addDependency(auth); // needs /issuer SSM param (Loom issuer)
   }
 
-  // serve-tool: gateway Lambda tools (:PROD aliases) in front of serve-agent
-  // (IAM, identity from the calling gateway's id) and serve (JWT passthrough).
-  // Both context keys are optional; without them every agent call is refused
-  // and only same-account principals can invoke.
+  // serve-tool: Lambda tools (:PROD aliases) in front of serve-agent (IAM, one
+  // function per tool, one fixed COA identity) and serve (JWT passthrough).
+  // serve_tool_invoker_arns is optional: factory gateways get their invoke
+  // grant from the factory registry stack, so it is normally left unset.
   const parseJsonContext = <T>(key: string): T | undefined => {
     const raw = app.node.tryGetContext(key) as string | T | undefined;
     if (raw === undefined || raw === "") return undefined;
@@ -609,9 +609,6 @@ async function deploy(): Promise<void> {
     invokerPrincipalArns: parseJsonContext<string[]>(
       "serve_tool_invoker_arns",
     ),
-    gatewayIdentities: parseJsonContext<
-      Record<string, { userId: string; groups: string[] }>
-    >("serve_tool_gateway_identities"),
   });
   serveTool.addDependency(serveAgent); // /serve/agent-runtime-arn
   serveTool.addDependency(serve); // /serve/runtime-arn

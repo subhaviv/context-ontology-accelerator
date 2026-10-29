@@ -3,22 +3,24 @@
 
 """AgentCore Gateway Lambda target in front of a Context Manager (serve) runtime.
 
-One handler, deployed twice by ``ServeToolStack``:
+One handler, deployed by ``ServeToolStack`` as:
 
-* ``SERVE_TOOL_MODE=agent`` fronts the IAM-authorized serve-agent runtime. The
-  invoke is SigV4-signed with this function's own role. The COA identity sent in
-  ``profile`` comes from a server-side map keyed on the calling gateway's id
-  (``bedrockAgentCoreGatewayId``, set by the gateway service, never by the
-  model). An unmapped gateway is refused: no default identity.
-* ``SERVE_TOOL_MODE=user`` fronts the JWT-authorized human serve runtime. The
-  caller's ID token arrives as a gateway-propagated header and is forwarded as
-  ``Authorization: Bearer``. Serve's own authorizer and ``identity.py`` validate
-  it and take groups from the token, so this function makes no identity decision.
+* ``SERVE_TOOL_MODE=agent``: one function PER TOOL (``SERVE_TOOL_NAME``), each
+  fronting the IAM-authorized serve-agent runtime and SigV4-signing with its own
+  role. Every call runs as ONE fixed COA identity from this function's env
+  (``COA_AGENT_USER_ID`` / ``COA_AGENT_GROUPS``), never from tool arguments or
+  the gateway context. Admission (which agents may call the tool at all) is the
+  calling platform's job; serve-agent then authorizes that identity against the
+  namespace with its own grants.
+* ``SERVE_TOOL_MODE=user``: one function for all tools, fronting the
+  JWT-authorized human serve runtime. The caller's ID token arrives as a
+  gateway-propagated header and is forwarded as ``Authorization: Bearer``.
+  Serve's own authorizer and ``identity.py`` validate it and take groups from the
+  token, so this function makes no identity decision. The tool is read from
+  ``bedrockAgentCoreToolName`` (``<target>___<tool>``).
 
-Each gateway Lambda target carries one tool, so the tool is read from
-``bedrockAgentCoreToolName`` (``<target>___<tool>``) and the event holds only
-that tool's arguments. Payload keys mirror ``coa_mcp.tools.execution`` so serve
-sees the same contract from every caller.
+The event holds only the tool's arguments. Payload keys mirror
+``coa_mcp.tools.execution`` so serve sees the same contract from every caller.
 
 Stdlib + botocore only (both ship in the Lambda Python runtime), so the asset
 needs no pip install.
@@ -31,7 +33,6 @@ import hashlib
 import json
 import logging
 import os
-import time
 import urllib.error
 import urllib.request
 from typing import Any
@@ -42,9 +43,6 @@ logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
 
 _SESSION_HEADER = "X-Amzn-Bedrock-AgentCore-Runtime-Session-Id"
 _TOOL_DELIMITER = "___"
-_MAP_TTL_S = 300
-
-_gateway_map_cache: dict[str, Any] = {"value": None, "loaded_at": 0.0}
 
 
 class ToolError(Exception):
@@ -161,7 +159,8 @@ def _custom_context(context: Any) -> dict:
     return custom if isinstance(custom, dict) else {}
 
 
-def _tool_name(custom: dict) -> str:
+def _user_tool_name(custom: dict) -> str:
+    """User mode: one function serves every tool, so read it from the gateway."""
     raw = str(custom.get("bedrockAgentCoreToolName") or "")
     name = raw.split(_TOOL_DELIMITER)[-1] if raw else ""
     if name not in _BUILDERS:
@@ -169,41 +168,23 @@ def _tool_name(custom: dict) -> str:
     return name
 
 
+def _agent_tool_name() -> str:
+    """Agent mode: one function per tool, pinned by ``SERVE_TOOL_NAME``."""
+    name = os.environ.get("SERVE_TOOL_NAME", "")
+    if name not in _BUILDERS:
+        raise ToolError(500, f"SERVE_TOOL_NAME misconfigured: '{name}'")
+    return name
+
+
 # ── Identity ───────────────────────────────────────────────────────────────────
 
 
-def _load_gateway_map() -> dict:
-    """Read the gateway-id → COA identity map from SSM, cached for ``_MAP_TTL_S``."""
-    now = time.time()
-    cached = _gateway_map_cache["value"]
-    if cached is not None and now - _gateway_map_cache["loaded_at"] < _MAP_TTL_S:
-        return cached
-    import boto3
-
-    param = os.environ["GATEWAY_IDENTITY_PARAM"]
-    raw = boto3.client("ssm").get_parameter(Name=param)["Parameter"]["Value"]
-    try:
-        value = json.loads(raw)
-    except json.JSONDecodeError:
-        logger.error("gateway identity map is not valid JSON (param=%s)", param)
-        value = {}
-    if not isinstance(value, dict):
-        value = {}
-    _gateway_map_cache.update(value=value, loaded_at=now)
-    return value
-
-
-def _agent_profile(custom: dict, namespace: str) -> dict:
-    """Resolve the system identity for the calling gateway; refuse if unmapped."""
-    gateway_id = str(custom.get("bedrockAgentCoreGatewayId") or "")
-    if not gateway_id:
-        raise ToolError(403, "no gateway id in invocation context")
-    entry = _load_gateway_map().get(gateway_id)
-    groups = entry.get("groups") if isinstance(entry, dict) else None
-    user_id = entry.get("userId") if isinstance(entry, dict) else None
-    if not user_id or not isinstance(groups, list) or not all(isinstance(g, str) and g for g in groups) or not groups:
-        logger.warning("refused unmapped gateway %s", gateway_id)
-        raise ToolError(403, "calling gateway is not mapped to a COA identity")
+def _agent_profile(namespace: str) -> dict:
+    """The one fixed COA identity agent calls run as, from this function's env."""
+    user_id = os.environ.get("COA_AGENT_USER_ID", "").strip()
+    groups = [g.strip() for g in os.environ.get("COA_AGENT_GROUPS", "").split(",") if g.strip()]
+    if not user_id or not groups:
+        raise ToolError(500, "agent identity misconfigured (COA_AGENT_USER_ID / COA_AGENT_GROUPS)")
     return {"userId": user_id, "groups": groups, "namespace": namespace}
 
 
@@ -313,10 +294,10 @@ def handler(event: dict, context: Any) -> dict:
         if not isinstance(event, dict):
             raise ToolError(400, "tool arguments must be an object")
         custom = _custom_context(context)
-        tool = _tool_name(custom)
+        tool = _agent_tool_name() if mode == "agent" else _user_tool_name(custom)
         namespace = str(_require(event, "namespaceId"))
         if mode == "agent":
-            profile = _agent_profile(custom, namespace)
+            profile = _agent_profile(namespace)
             bearer, principal = None, profile["userId"]
         else:
             bearer = _propagated_token(custom)

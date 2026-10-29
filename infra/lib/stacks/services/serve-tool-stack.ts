@@ -18,43 +18,59 @@ const SERVE_TOOL_DIR = "packages/context-manager/lambda/serve-tool";
 export const SERVE_TOOL_ID_TOKEN_HEADER =
   "X-Amzn-Bedrock-AgentCore-Runtime-Custom-IdToken";
 
+/** Default COA identity every agent-tool call runs as. */
+export const DEFAULT_AGENT_USER_ID = "factory-agent";
+export const DEFAULT_AGENT_GROUPS = ["factory-agents"];
+
+/** Tool names from `tool-schemas.json`, in file order. */
+export function serveToolNames(): string[] {
+  return (
+    JSON.parse(
+      fs.readFileSync(fromRoot(`${SERVE_TOOL_DIR}/tool-schemas.json`), "utf8"),
+    ) as { name: string }[]
+  ).map((t) => t.name);
+}
+
+/** `translate_sparql` -> `TranslateSparql`, for construct ids and outputs. */
+const pascal = (name: string): string =>
+  name
+    .split(/[_-]/)
+    .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+    .join("");
+
 export interface ServeToolStackProps extends cdk.StackProps {
   /**
-   * Principals allowed to invoke the `:PROD` aliases, typically the AgentCore
-   * Gateway service roles of the gateways that target these tools (they may be
-   * in another account). Empty = no resource policy, so only same-account
-   * principals with an identity-policy grant can invoke.
+   * Principals allowed to invoke the `:PROD` aliases. Empty by default: factory
+   * gateways get their invoke grant from the factory's registry stack on the
+   * alias, so none are hardcoded here.
    */
   readonly invokerPrincipalArns?: string[];
-  /**
-   * Gateway id -> COA system identity, e.g.
-   * `{"gw-abc123": {"userId": "beacon-agent", "groups": ["beacon-agents"]}}`.
-   * Written to SSM and read by the agent Lambda. A gateway not in the map is
-   * refused. Defaults to `{}` (every agent call refused until mapped).
-   */
-  readonly gatewayIdentities?: Record<
-    string,
-    { userId: string; groups: string[] }
-  >;
+  /** COA user id agent-tool calls run as. Default {@link DEFAULT_AGENT_USER_ID}. */
+  readonly agentUserId?: string;
+  /** COA groups agent-tool calls run as. Default {@link DEFAULT_AGENT_GROUPS}. */
+  readonly agentGroups?: string[];
 }
 
 /**
- * Gateway Lambda tools in front of the two Context Manager (serve) runtimes.
+ * Lambda tools in front of the two Context Manager (serve) runtimes.
  *
- * - `serve-tool-agent` -> serve-agent (IAM). SigV4 with its own role, which may
- *   InvokeAgentRuntime on serve-agent only. COA identity comes from the calling
- *   gateway's id via the SSM map, never from tool arguments.
- * - `serve-tool-user` -> serve (JWT). Forwards the human caller's ID token,
- *   propagated by the gateway in {@link SERVE_TOOL_ID_TOKEN_HEADER}. Serve
+ * - Agent tools: ONE function per tool in `tool-schemas.json`
+ *   (`serve-tool-<tool>`), each with its own `PROD` alias so every tool has a
+ *   unique target ARN (the factory catalogue rejects two tools sharing one).
+ *   Each calls serve-agent (IAM) with SigV4 and may InvokeAgentRuntime on
+ *   serve-agent only. Every call runs as one fixed COA identity from props;
+ *   admission is the calling platform's job, serve-agent's grants authorize the
+ *   identity per namespace.
+ * - `serve-tool-user` -> serve (JWT): one function for all tools, forwarding
+ *   the human caller's ID token from {@link SERVE_TOOL_ID_TOKEN_HEADER}. Serve
  *   verifies it and takes groups from it, so this role needs no AgentCore IAM.
  *
- * Both publish a `PROD` alias (the factory catalogue requires alias-pinned
- * targets) and live in the same account as serve, so the Lambda -> serve hop
- * never crosses an account. Tool schemas: `tool-schemas.json` next to the
- * handler, one tool per gateway target.
+ * Everything lives in the same account as serve, so the Lambda -> serve hop
+ * never crosses an account.
  */
 export class ServeToolStack extends SCLStack {
-  public readonly agentAlias: lambda.Alias;
+  /** Agent-tool `PROD` aliases, keyed by tool name. */
+  public readonly toolAliases: Record<string, lambda.Alias> = {};
   public readonly userAlias: lambda.Alias;
 
   constructor(scope: Construct, id: string, props: ServeToolStackProps = {}) {
@@ -62,6 +78,13 @@ export class ServeToolStack extends SCLStack {
     this.addComponentTag("serve-tool");
 
     const { ssmPrefix } = resolveContext(this.node);
+    const agentUserId = props.agentUserId ?? DEFAULT_AGENT_USER_ID;
+    const agentGroups = props.agentGroups ?? DEFAULT_AGENT_GROUPS;
+    if (!agentUserId || agentGroups.length === 0) {
+      throw new Error(
+        "ServeToolStack: agentUserId and agentGroups must be non-empty",
+      );
+    }
 
     const serveAgentRuntimeArn = ssm.StringParameter.valueForStringParameter(
       this,
@@ -72,17 +95,6 @@ export class ServeToolStack extends SCLStack {
       `${ssmPrefix}/serve/runtime-arn`,
     );
 
-    const gatewayIdentityParam = new ssm.StringParameter(
-      this,
-      "GatewayIdentityParam",
-      {
-        parameterName: `${ssmPrefix}/serve-tool/gateway-identities`,
-        stringValue: JSON.stringify(props.gatewayIdentities ?? {}),
-        description:
-          "Gateway id -> COA system identity for the serve-tool-agent Lambda",
-      },
-    );
-
     // No pip deps: the handler uses only stdlib + botocore from the runtime.
     const code = bundlePython({
       srcDirs: [fromRoot(SERVE_TOOL_DIR)],
@@ -90,13 +102,13 @@ export class ServeToolStack extends SCLStack {
     });
 
     const makeFn = (
-      name: string,
-      mode: "agent" | "user",
-      runtimeArn: string,
-      extraEnv: Record<string, string>,
+      idBase: string,
+      functionSuffix: string,
+      description: string,
+      environment: Record<string, string>,
     ): lambda.Alias => {
-      const fn = new lambda.Function(this, `${name}Fn`, {
-        functionName: this.prefixed(`serve-tool-${mode}`),
+      const fn = new lambda.Function(this, `${idBase}Fn`, {
+        functionName: this.prefixed(functionSuffix),
         runtime: lambda.Runtime.PYTHON_3_12,
         architecture: lambda.Architecture.ARM_64,
         handler: "serve_tool_handler.handler",
@@ -104,22 +116,17 @@ export class ServeToolStack extends SCLStack {
         // Serve's own resolve budget is 170s; leave headroom for the hop.
         timeout: cdk.Duration.seconds(180),
         memorySize: 256,
-        environment: {
-          SERVE_TOOL_MODE: mode,
-          SERVE_RUNTIME_ARN: runtimeArn,
-          SERVE_INVOKE_TIMEOUT_S: "170",
-          ...extraEnv,
-        },
-        description: `COA serve gateway tool (${mode}) -> ${mode === "agent" ? "serve-agent (IAM)" : "serve (JWT)"}`,
+        environment: { SERVE_INVOKE_TIMEOUT_S: "170", ...environment },
+        description,
       });
       // currentVersion re-publishes when code or config changes, so PROD
       // always points at what this deploy shipped.
-      const alias = new lambda.Alias(this, `${name}ProdAlias`, {
+      const alias = new lambda.Alias(this, `${idBase}ProdAlias`, {
         aliasName: "PROD",
         version: fn.currentVersion,
       });
       for (const [i, arn] of (props.invokerPrincipalArns ?? []).entries()) {
-        alias.addPermission(`${name}Invoker${i}`, {
+        alias.addPermission(`${idBase}Invoker${i}`, {
           principal: new iam.ArnPrincipal(arn),
           action: "lambda:InvokeFunction",
         });
@@ -127,26 +134,56 @@ export class ServeToolStack extends SCLStack {
       return alias;
     };
 
-    this.agentAlias = makeFn("Agent", "agent", serveAgentRuntimeArn, {
-      GATEWAY_IDENTITY_PARAM: gatewayIdentityParam.parameterName,
-    });
-    // Invoke serve-agent only: the bare runtime and its endpoints.
-    this.agentAlias.lambda.addToRolePolicy(
-      new iam.PolicyStatement({
-        actions: ["bedrock-agentcore:InvokeAgentRuntime"],
-        resources: [serveAgentRuntimeArn, `${serveAgentRuntimeArn}/*`],
-      }),
+    for (const tool of serveToolNames()) {
+      const idBase = `Tool${pascal(tool)}`;
+      const alias = makeFn(
+        idBase,
+        `serve-tool-${tool.replace(/_/g, "-")}`,
+        `COA agent tool '${tool}' -> serve-agent (IAM)`,
+        {
+          SERVE_TOOL_MODE: "agent",
+          SERVE_TOOL_NAME: tool,
+          SERVE_RUNTIME_ARN: serveAgentRuntimeArn,
+          COA_AGENT_USER_ID: agentUserId,
+          COA_AGENT_GROUPS: agentGroups.join(","),
+        },
+      );
+      // Invoke serve-agent only: the bare runtime and its endpoints.
+      alias.lambda.addToRolePolicy(
+        new iam.PolicyStatement({
+          actions: ["bedrock-agentcore:InvokeAgentRuntime"],
+          resources: [serveAgentRuntimeArn, `${serveAgentRuntimeArn}/*`],
+        }),
+      );
+      this.toolAliases[tool] = alias;
+      new cdk.CfnOutput(this, `ToolAliasArn${pascal(tool)}`, {
+        value: alias.functionArn,
+        description: `Agent tool '${tool}' :PROD alias (serve-agent, IAM)`,
+      });
+    }
+
+    this.userAlias = makeFn(
+      "User",
+      "serve-tool-user",
+      "COA serve gateway tool (user) -> serve (JWT)",
+      {
+        SERVE_TOOL_MODE: "user",
+        SERVE_RUNTIME_ARN: serveRuntimeArn,
+        ID_TOKEN_HEADER: SERVE_TOOL_ID_TOKEN_HEADER,
+      },
     );
-    gatewayIdentityParam.grantRead(this.agentAlias.lambda);
 
-    this.userAlias = makeFn("User", "user", serveRuntimeArn, {
-      ID_TOKEN_HEADER: SERVE_TOOL_ID_TOKEN_HEADER,
-    });
-
-    new ssm.StringParameter(this, "AgentAliasArnParam", {
-      parameterName: `${ssmPrefix}/serve-tool/agent-alias-arn`,
-      stringValue: this.agentAlias.functionArn,
-      description: "serve-tool-agent :PROD alias ARN (gateway Lambda target)",
+    // tool -> alias ARN, for the factory catalogue to copy.
+    const toolAliasMap = cdk.Stack.of(this).toJsonString(
+      Object.fromEntries(
+        Object.entries(this.toolAliases).map(([t, a]) => [t, a.functionArn]),
+      ),
+    );
+    new ssm.StringParameter(this, "ToolAliasArnsParam", {
+      parameterName: `${ssmPrefix}/serve-tool/tool-alias-arns`,
+      stringValue: toolAliasMap,
+      description:
+        "Agent tool -> :PROD alias ARN (JSON), for gateway Lambda targets",
     });
     new ssm.StringParameter(this, "UserAliasArnParam", {
       parameterName: `${ssmPrefix}/serve-tool/user-alias-arn`,
@@ -154,23 +191,13 @@ export class ServeToolStack extends SCLStack {
       description: "serve-tool-user :PROD alias ARN (gateway Lambda target)",
     });
 
-    const toolNames = (
-      JSON.parse(
-        fs.readFileSync(fromRoot(`${SERVE_TOOL_DIR}/tool-schemas.json`), "utf8"),
-      ) as { name: string }[]
-    ).map((t) => t.name);
-
-    new cdk.CfnOutput(this, "AgentAliasArn", {
-      value: this.agentAlias.functionArn,
-      description: "Agent tool :PROD alias (serve-agent, IAM)",
+    new cdk.CfnOutput(this, "ToolAliasArns", {
+      value: toolAliasMap,
+      description: `Agent tool -> :PROD alias ARN; schemas in ${SERVE_TOOL_DIR}/tool-schemas.json`,
     });
     new cdk.CfnOutput(this, "UserAliasArn", {
       value: this.userAlias.functionArn,
       description: "User tool :PROD alias (serve, JWT passthrough)",
-    });
-    new cdk.CfnOutput(this, "ToolNames", {
-      value: toolNames.join(","),
-      description: `One gateway target per tool; schemas in ${SERVE_TOOL_DIR}/tool-schemas.json`,
     });
   }
 }
