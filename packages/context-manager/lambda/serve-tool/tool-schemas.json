@@ -1,0 +1,77 @@
+[
+  {
+    "name": "query",
+    "description": "Answer a natural-language question against a COA namespace with tiered resolution (Tier 1 governed metrics, Tier 2 ontology-guided SQL, Tier 3 agentic fallback). Returns {result, requestId, sessionId}.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "query": { "type": "string", "description": "Natural-language question, e.g. 'What is monthly revenue by region?'" },
+        "namespaceId": { "type": "string", "description": "The COA namespace to query." },
+        "execute": { "type": "boolean", "description": "False = translate only and return the generated query without running it." },
+        "tierOverride": { "type": "integer", "description": "Pin resolution to tier 1, 2 or 3. Omit for automatic routing." },
+        "mode": { "type": "string", "description": "'standard' (single shot) or 'deep-reasoning' (multi-step, slower)." },
+        "strategy": { "type": "string", "description": "Tier-2 engine: best, ontop, nl_to_sql, ontop_first, nl_to_sql_first or deep-reasoning." },
+        "dimensions": {
+          "type": "array",
+          "description": "Dimension filters.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string", "description": "Dimension name." },
+              "value": { "type": "string", "description": "Dimension value." }
+            },
+            "required": ["name", "value"]
+          }
+        },
+        "includeSupporting": { "type": "boolean", "description": "Include supporting document chunks (default true)." },
+        "maxResults": { "type": "integer", "description": "Maximum result rows (default 1000, max 10000)." },
+        "timeoutMs": { "type": "integer", "description": "Optional shorter budget in milliseconds." }
+      },
+      "required": ["query", "namespaceId"]
+    }
+  },
+  {
+    "name": "translate_sparql",
+    "description": "Translate a natural-language question into SPARQL using the namespace's published ontology, without executing it. Returns {sparqlQuery, confidence, trace, ontologyVersion}.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "query": { "type": "string", "description": "Natural-language question to translate." },
+        "namespaceId": { "type": "string", "description": "The COA namespace whose ontology is used." }
+      },
+      "required": ["query", "namespaceId"]
+    }
+  },
+  {
+    "name": "rag_retrieval",
+    "description": "Retrieve semantically similar document chunks from the namespace's knowledge base. Returns {chunks, trace, queryEmbeddingModel}.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "query": { "type": "string", "description": "Natural-language search query." },
+        "namespaceId": { "type": "string", "description": "The COA namespace to search." },
+        "topK": { "type": "integer", "description": "Maximum chunks to return (default 10, max 100)." },
+        "minScore": { "type": "number", "description": "Minimum similarity score, 0.0 to 1.0." },
+        "sourceFilter": { "type": "array", "description": "Restrict to these source document ids.", "items": { "type": "string" } },
+        "entityFilter": { "type": "array", "description": "Restrict to chunks annotated with these entities.", "items": { "type": "string" } }
+      },
+      "required": ["query", "namespaceId"]
+    }
+  },
+  {
+    "name": "graph_traversal",
+    "description": "Traverse the namespace's semantic graph from an entity IRI. Returns {entities, relationships, trace}.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "startUri": { "type": "string", "description": "IRI of the entity to start from." },
+        "namespaceId": { "type": "string", "description": "The COA namespace to traverse." },
+        "maxDepth": { "type": "integer", "description": "Maximum depth (default 2, max 5)." },
+        "direction": { "type": "string", "description": "'outgoing', 'incoming' or 'both' (default)." },
+        "maxResults": { "type": "integer", "description": "Maximum entities (default 100, max 1000)." },
+        "relationshipFilter": { "type": "array", "description": "Restrict to these predicate IRIs.", "items": { "type": "string" } }
+      },
+      "required": ["startUri", "namespaceId"]
+    }
+  }
+]

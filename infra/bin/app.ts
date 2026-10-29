@@ -49,6 +49,7 @@ import {
   OntologyStack,
   ServeStack,
   ServeAgentStack,
+  ServeToolStack,
   SourcesStack,
   VkgStack,
 } from "../lib/stacks/services";
@@ -594,6 +595,26 @@ async function deploy(): Promise<void> {
     agentMcp.addDependency(serveAgent); // needs /serve/agent-runtime-arn SSM param
     agentMcp.addDependency(auth); // needs /issuer SSM param (Loom issuer)
   }
+
+  // serve-tool: gateway Lambda tools (:PROD aliases) in front of serve-agent
+  // (IAM, identity from the calling gateway's id) and serve (JWT passthrough).
+  // Both context keys are optional; without them every agent call is refused
+  // and only same-account principals can invoke.
+  const parseJsonContext = <T>(key: string): T | undefined => {
+    const raw = app.node.tryGetContext(key) as string | T | undefined;
+    if (raw === undefined || raw === "") return undefined;
+    return typeof raw === "string" ? (JSON.parse(raw) as T) : raw;
+  };
+  const serveTool = new ServeToolStack(app, `${stackPrefix}-serve-tool`, {
+    invokerPrincipalArns: parseJsonContext<string[]>(
+      "serve_tool_invoker_arns",
+    ),
+    gatewayIdentities: parseJsonContext<
+      Record<string, { userId: string; groups: string[] }>
+    >("serve_tool_gateway_identities"),
+  });
+  serveTool.addDependency(serveAgent); // /serve/agent-runtime-arn
+  serveTool.addDependency(serve); // /serve/runtime-arn
 
   // Every stack with a VPC Lambda waits for EniWarmStack, so its functions reuse
   // the pre-warmed Hyperplane ENIs instead of each paying a ~4 min create.

@@ -12,5 +12,6 @@ export { NamespaceStack } from "./namespace-stack";
 export { OntologyStack } from "./ontology-stack";
 export { ServeStack } from "./serve-stack";
 export { ServeAgentStack } from "./serve-agent-stack";
+export { ServeToolStack } from "./serve-tool-stack";
 export { SourcesStack } from "./sources-stack";
 export { VkgStack } from "./vkg-stack";
