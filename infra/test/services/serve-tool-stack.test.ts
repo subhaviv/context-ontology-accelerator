@@ -23,7 +23,7 @@ const TEST_CONTEXT = {
 };
 
 const TOOLS = ["query", "translate_sparql", "rag_retrieval", "graph_traversal"];
-const DISCOVERY = ["list_metrics", "describe_schema"];
+const DISCOVERY = ["list_metrics", "describe_schema", "get_namespace"];
 const ALL_TOOLS = [...TOOLS, ...DISCOVERY];
 const GATEWAY_ROLE = "arn:aws:iam::111122223333:role/workstream-gateway-role";
 
@@ -73,8 +73,8 @@ describe("ServeToolStack", () => {
     }
   });
 
-  it("has only the 6 M2M tool functions (no user/JWT function)", () => {
-    expect(Object.keys(functions)).toHaveLength(6);
+  it("has only the 7 M2M tool functions (no user/JWT function)", () => {
+    expect(Object.keys(functions)).toHaveLength(7);
     const json = JSON.stringify(template.toJSON());
     for (const gone of [
       "serve-tool-user",
@@ -86,16 +86,16 @@ describe("ServeToolStack", () => {
     }
   });
 
-  it("publishes 6 PROD aliases with unique ARNs, one per agent tool", () => {
+  it("publishes 7 PROD aliases with unique ARNs, one per agent tool", () => {
     template.resourcePropertiesCountIs(
       "AWS::Lambda::Alias",
       { Name: "PROD" },
-      6,
+      7,
     );
     const arns = ALL_TOOLS.map((t) =>
       stack.resolve(stack.toolAliases[t].functionArn),
     );
-    expect(new Set(arns.map((a) => JSON.stringify(a))).size).toBe(6);
+    expect(new Set(arns.map((a) => JSON.stringify(a))).size).toBe(7);
   });
 
   it("scopes every agent role to InvokeAgentRuntime on serve-agent only", () => {
@@ -152,6 +152,7 @@ describe("ServeToolStack", () => {
       "ToolAliasArnGraphTraversal",
       "ToolAliasArnListMetrics",
       "ToolAliasArnDescribeSchema",
+      "ToolAliasArnGetNamespace",
       "ToolAliasArns",
     ]) {
       expect(outputs[id]).toBeDefined();
@@ -170,7 +171,7 @@ describe("ServeToolStack", () => {
 
     it("creates one function per discovery tool with the fixed identity", () => {
       expect(discoveryToolNames()).toEqual(DISCOVERY);
-      expect(discoveryFns).toHaveLength(2);
+      expect(discoveryFns).toHaveLength(3);
       for (const f of discoveryFns) {
         expect(f.Properties.Handler).toBe("discovery_tool_handler.handler");
         expect(f.Properties.Environment.Variables).toMatchObject({
@@ -194,6 +195,33 @@ describe("ServeToolStack", () => {
       );
       expect(backends.list_metrics).toContain("coa-dev-metric-api");
       expect(backends.describe_schema).toContain("coa-dev-ontology-api-proxy");
+      const getNs = discoveryFns.find(
+        (f) =>
+          f.Properties.Environment.Variables.DISCOVERY_TOOL_NAME ===
+          "get_namespace",
+      )!;
+      expect(getNs.Properties.Environment.Variables).toMatchObject({
+        NAMESPACES_TABLE: "coa-dev-namespaces",
+      });
+      expect(
+        getNs.Properties.Environment.Variables.BACKEND_LAMBDA_ARN,
+      ).toBeUndefined();
+    });
+
+    it("lets get_namespace only GetItem the namespaces table, invoke nothing", () => {
+      const nsStmts = policies.flatMap((p) =>
+        (
+          p.Properties.PolicyDocument.Statement as {
+            Action: unknown;
+            Resource: unknown;
+          }[]
+        ).filter((s) =>
+          JSON.stringify(s.Resource).includes("coa-dev-namespaces"),
+        ),
+      );
+      expect(nsStmts).toHaveLength(1);
+      expect(nsStmts[0].Action).toBe("dynamodb:GetItem");
+      expect(([] as unknown[]).concat(nsStmts[0].Resource)).toHaveLength(1);
     });
 
     it("lets each role invoke only its own backend and read the grant tables", () => {
@@ -246,7 +274,7 @@ describe("ServeToolStack", () => {
     t.resourcePropertiesCountIs(
       "AWS::Lambda::Permission",
       { Action: "lambda:InvokeFunction", Principal: GATEWAY_ROLE },
-      6,
+      7,
     );
   });
 

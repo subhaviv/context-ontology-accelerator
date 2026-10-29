@@ -159,3 +159,64 @@ class TestRequests:
     def test_missing_namespace(self, authz, backend):
         assert h.handler({}, None)["error"]["status"] == 400
         authz.resolve.assert_not_called()
+
+
+@pytest.mark.unit
+class TestGetNamespace:
+    ITEM = {
+        "PK": f"NS#{NS}",
+        "SK": "METADATA",
+        "namespaceId": NS,
+        "name": "pharma",
+        "displayName": "Pharma",
+        "description": "Supply chain",
+        "status": "ACTIVE",
+        "language": "en",
+        "owner": "someone@example.com",
+        "athenaWorkgroupName": "wg",
+        "dataZoneProjectId": "dz",
+    }
+
+    @pytest.fixture
+    def table(self, monkeypatch):
+        monkeypatch.setenv("DISCOVERY_TOOL_NAME", "get_namespace")
+        monkeypatch.setenv("NAMESPACES_TABLE", "coa-dev-namespaces")
+        t = MagicMock()
+        t.get_item.return_value = {"Item": dict(self.ITEM)}
+        h._ns_table = t
+        yield t
+        h._ns_table = None
+
+    def test_returns_profile_fields_only(self, authz, table):
+        out = h.handler({"namespaceId": NS}, None)
+        assert out == {
+            "namespace": {
+                "namespaceId": NS,
+                "name": "pharma",
+                "displayName": "Pharma",
+                "description": "Supply chain",
+                "status": "ACTIVE",
+                "language": "en",
+            }
+        }
+        table.get_item.assert_called_once_with(Key={"PK": f"NS#{NS}", "SK": "METADATA"})
+        assert authz.cedar.call_args.kwargs["action"] == "viewNamespace"
+
+    def test_legacy_item_without_language_reads_as_default(self, authz, table):
+        item = dict(self.ITEM)
+        del item["language"]
+        table.get_item.return_value = {"Item": item}
+        assert h.handler({"namespaceId": NS}, None)["namespace"]["language"] == "en"
+
+    def test_no_grant_is_refused_before_reading(self, authz, table):
+        authz.resolve.return_value = _resolved([])
+        assert h.handler({"namespaceId": NS}, None)["error"]["status"] == 403
+        table.get_item.assert_not_called()
+
+    def test_missing_namespace_item_is_404(self, authz, table):
+        table.get_item.return_value = {}
+        assert h.handler({"namespaceId": NS}, None)["error"]["status"] == 404
+
+    def test_read_failure_is_502(self, authz, table):
+        table.get_item.side_effect = RuntimeError("throttled")
+        assert h.handler({"namespaceId": NS}, None)["error"]["status"] == 502

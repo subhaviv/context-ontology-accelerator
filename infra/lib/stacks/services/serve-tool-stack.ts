@@ -18,10 +18,19 @@ import { ONTOLOGY_API_PROXY_FUNCTION_NAME } from "./ontology-stack";
 const SERVE_TOOL_DIR = "packages/context-manager/lambda/serve-tool";
 const DISCOVERY_TOOL_DIR = "packages/context-manager/lambda/discovery-tool";
 
-/** Backend Lambda (fixed prefixed name) each discovery tool calls directly. */
-const DISCOVERY_BACKENDS: Record<string, string> = {
-  list_metrics: METRIC_API_FUNCTION_NAME,
-  describe_schema: ONTOLOGY_API_PROXY_FUNCTION_NAME,
+/**
+ * What each discovery tool reads: a backend Lambda it invokes directly, or a
+ * table it reads one item from (both by fixed prefixed name).
+ */
+const DISCOVERY_BACKENDS: Record<
+  string,
+  { lambda: string } | { table: string }
+> = {
+  list_metrics: { lambda: METRIC_API_FUNCTION_NAME },
+  describe_schema: { lambda: ONTOLOGY_API_PROXY_FUNCTION_NAME },
+  // Not the control-plane namespace Lambda: it also serves PUT/DELETE and
+  // trusts API Gateway's authorizer, so invoking it would be write access.
+  get_namespace: { table: TABLE_NAMES.NAMESPACES },
 };
 
 /** Default COA identity every agent-tool call runs as. */
@@ -76,10 +85,12 @@ export interface ServeToolStackProps extends cdk.StackProps {
  *   serve-agent only. Every call runs as one fixed COA identity from props;
  *   admission is the calling platform's job, serve-agent's grants authorize the
  *   identity per namespace.
- * - Discovery tools (`list_metrics`, `describe_schema`): one function per tool
- *   as well, each calling its metric-service / ontology-proxy Lambda directly.
- *   Those backends do not authorize callers, so these functions run COA's grant
- *   lookup and Cedar `viewNamespace` check for the same fixed identity first.
+ * - Discovery tools (`list_metrics`, `describe_schema`, `get_namespace`): one
+ *   function per tool as well. The first two call the metric-service /
+ *   ontology-proxy Lambda directly; `get_namespace` reads the namespace's
+ *   metadata item. Those backends do not authorize callers, so these functions
+ *   run COA's grant lookup and Cedar `viewNamespace` check for the same fixed
+ *   identity first.
  *   Schemas in `discovery-tool/tool-schemas.json`.
  *
  * Everything lives in the same account as serve and the discovery backends, so
@@ -225,15 +236,19 @@ export class ServeToolStack extends SCLStack {
           `ServeToolStack: no backend for discovery tool '${tool}'`,
         );
       }
-      const backendArn = prefixedLambdaArn(this, backend);
+      const backendName = "lambda" in backend ? backend.lambda : backend.table;
+      const backendEnv: Record<string, string> =
+        "lambda" in backend
+          ? { BACKEND_LAMBDA_ARN: prefixedLambdaArn(this, backend.lambda) }
+          : { NAMESPACES_TABLE: this.prefixed(backend.table) };
       const idBase = `Tool${pascal(tool)}`;
       const alias = makeFn(
         idBase,
         `serve-tool-${tool.replace(/_/g, "-")}`,
-        `COA agent tool '${tool}' -> ${backend} (grant + Cedar checked here)`,
+        `COA agent tool '${tool}' -> ${backendName} (grant + Cedar checked here)`,
         {
           DISCOVERY_TOOL_NAME: tool,
-          BACKEND_LAMBDA_ARN: backendArn,
+          ...backendEnv,
           COA_AGENT_USER_ID: agentUserId,
           COA_AGENT_GROUPS: agentGroups.join(","),
           ROLES_TABLE_NAME: rolesTableName,
@@ -245,12 +260,18 @@ export class ServeToolStack extends SCLStack {
           timeout: cdk.Duration.seconds(45),
         },
       );
-      // Its own backend only, and read-only on the two grant tables.
+      // Its own backend only (invoke its Lambda, or GetItem on its table), and
+      // read-only on the two grant tables.
       alias.lambda.addToRolePolicy(
-        new iam.PolicyStatement({
-          actions: ["lambda:InvokeFunction"],
-          resources: [backendArn],
-        }),
+        "lambda" in backend
+          ? new iam.PolicyStatement({
+              actions: ["lambda:InvokeFunction"],
+              resources: [backendEnv.BACKEND_LAMBDA_ARN],
+            })
+          : new iam.PolicyStatement({
+              actions: ["dynamodb:GetItem"],
+              resources: [tableArn(backendEnv.NAMESPACES_TABLE)],
+            }),
       );
       alias.lambda.addToRolePolicy(
         new iam.PolicyStatement({
@@ -265,7 +286,7 @@ export class ServeToolStack extends SCLStack {
       this.toolAliases[tool] = alias;
       new cdk.CfnOutput(this, `ToolAliasArn${pascal(tool)}`, {
         value: alias.functionArn,
-        description: `Agent tool '${tool}' :PROD alias (${backend})`,
+        description: `Agent tool '${tool}' :PROD alias (${backendName})`,
       });
     }
 

@@ -25,5 +25,16 @@
       },
       "required": ["namespaceId"]
     }
+  },
+  {
+    "name": "get_namespace",
+    "description": "Get a COA namespace's curated profile: display name, description and language, as authored by the namespace owner. Use it to frame the domain before querying. Read-only. Returns {namespace: {namespaceId, name, displayName, description, status, language}}.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "namespaceId": { "type": "string", "description": "The COA namespace to describe." }
+      },
+      "required": ["namespaceId"]
+    }
   }
 ]

@@ -1,16 +1,20 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Agent Lambda tool for COA's discovery tools: ``list_metrics`` and ``describe_schema``.
+"""Agent Lambda tools for COA discovery: list_metrics, describe_schema, get_namespace.
 
 Deployed by ``ServeToolStack`` as one function PER TOOL (``DISCOVERY_TOOL_NAME``),
 each with its own ``PROD`` alias, alongside the serve tools.
 
-Unlike the serve tools, these do not go through serve-agent: like the MCP server,
-they invoke the metric-service / ontology-proxy Lambda directly with a synthetic
-API Gateway event. Those backends do NOT authorize the caller themselves (they
-trust whatever invoked them), so this function runs the same namespace gate the
-MCP server runs before every discovery call (``coa_mcp.auth.grant_resolver``):
+Unlike the serve tools, these do not go through serve-agent. ``list_metrics`` and
+``describe_schema`` invoke the metric-service / ontology-proxy Lambda directly with
+a synthetic API Gateway event, like the MCP server. ``get_namespace`` reads the
+namespace's metadata item from the namespaces table (the same item
+``coa_control_plane.namespace.get_handler`` serves) and returns only its profile
+fields; it does not invoke the control-plane namespace Lambda, which also serves
+PUT/DELETE behind API Gateway's authorizer. None of those backends authorize the
+caller themselves, so this function runs the same namespace gate the MCP server
+runs before every discovery call (``coa_mcp.auth.grant_resolver``):
 
 1. resolve the fixed agent identity's roles from the ResourceRoleMappings table
    (``coa_serve.role_resolver.resolve_profile``, the shared resolver);
@@ -37,13 +41,17 @@ logger = logging.getLogger()
 logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
 
 # Cedar action per tool -- same mapping as coa_mcp.auth.grant_resolver.TOOL_CEDAR_ACTION.
-_CEDAR_ACTION = {"list_metrics": "viewNamespace", "describe_schema": "viewNamespace"}
+_CEDAR_ACTION = {"list_metrics": "viewNamespace", "describe_schema": "viewNamespace", "get_namespace": "viewNamespace"}
 _RESOURCE = {
     "list_metrics": "/namespaces/{namespaceId}/metrics",
     "describe_schema": "/namespaces/{namespaceId}/schema",
 }
+# get_namespace returns the namespace's curated profile only -- not owner,
+# DataZone/Athena wiring, source counts or the datasource ExternalId.
+_NAMESPACE_FIELDS = ("namespaceId", "name", "displayName", "description", "status")
 
 _lambda_client: Any = None
+_ns_table: Any = None
 
 
 class ToolError(Exception):
@@ -61,7 +69,7 @@ class ToolError(Exception):
 
 def _tool_name() -> str:
     name = os.environ.get("DISCOVERY_TOOL_NAME", "")
-    if name not in _RESOURCE:
+    if name not in _CEDAR_ACTION:
         raise ToolError(500, f"DISCOVERY_TOOL_NAME misconfigured: '{name}'")
     return name
 
@@ -203,6 +211,27 @@ def _invoke_backend(event: dict) -> dict:
     return parsed if isinstance(parsed, dict) else {"result": parsed}
 
 
+def _read_namespace(namespace: str) -> dict:
+    """The namespace's profile, from the same item the control-plane GET serves."""
+    global _ns_table
+    if _ns_table is None:
+        import boto3
+
+        _ns_table = boto3.resource("dynamodb").Table(os.environ["NAMESPACES_TABLE"])
+    try:
+        item = _ns_table.get_item(Key={"PK": f"NS#{namespace}", "SK": "METADATA"}).get("Item")
+    except Exception:
+        logger.exception("namespace read failed namespace=%s", namespace)
+        raise ToolError(502, "unable to read namespace") from None
+    if not item:
+        raise ToolError(404, f"Namespace not found: {namespace}")
+    from coa_common.language_tags import effective_namespace_language
+
+    profile = {k: item[k] for k in _NAMESPACE_FIELDS if item.get(k) is not None}
+    profile["language"] = effective_namespace_language(item)
+    return {"namespace": profile}
+
+
 # ── Entry point ────────────────────────────────────────────────────────────────
 
 
@@ -217,6 +246,9 @@ def handler(event: dict, context: Any) -> dict:
             raise ToolError(400, "missing required argument 'namespaceId'")
         user_id, groups = _identity()
         global_roles, _ = _authorize(user_id, groups, namespace, _CEDAR_ACTION[tool])
+        if tool == "get_namespace":
+            logger.info("tool=%s namespace=%s ok", tool, namespace)
+            return _read_namespace(namespace)
         result = _invoke_backend(_api_event(tool, namespace, _query_params(tool, event), user_id, groups, global_roles))
         if tool == "describe_schema":
             # Project to the Smithy DescribeSchema shape, as the MCP server does.
