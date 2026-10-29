@@ -6,13 +6,23 @@ import * as cdk from "aws-cdk-lib";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as ssm from "aws-cdk-lib/aws-ssm";
+import { TABLE_NAMES } from "@coa/shared";
 import { Construct } from "constructs";
-import { resolveContext } from "../../context";
+import { prefixedLambdaArn, resolveContext } from "../../context";
 import { fromRoot } from "../../paths";
 import { SCLStack } from "../../constructs";
 import { bundlePython } from "../../utils/python-bundling";
+import { METRIC_API_FUNCTION_NAME } from "./metric-service-stack";
+import { ONTOLOGY_API_PROXY_FUNCTION_NAME } from "./ontology-stack";
 
 const SERVE_TOOL_DIR = "packages/context-manager/lambda/serve-tool";
+const DISCOVERY_TOOL_DIR = "packages/context-manager/lambda/discovery-tool";
+
+/** Backend Lambda (fixed prefixed name) each discovery tool calls directly. */
+const DISCOVERY_BACKENDS: Record<string, string> = {
+  list_metrics: METRIC_API_FUNCTION_NAME,
+  describe_schema: ONTOLOGY_API_PROXY_FUNCTION_NAME,
+};
 
 /** Header the gateway propagates the human caller's ID token in. */
 export const SERVE_TOOL_ID_TOKEN_HEADER =
@@ -24,9 +34,18 @@ export const DEFAULT_AGENT_GROUPS = ["factory-agents"];
 
 /** Tool names from `tool-schemas.json`, in file order. */
 export function serveToolNames(): string[] {
+  return toolNamesIn(SERVE_TOOL_DIR);
+}
+
+/** Discovery tool names from `discovery-tool/tool-schemas.json`. */
+export function discoveryToolNames(): string[] {
+  return toolNamesIn(DISCOVERY_TOOL_DIR);
+}
+
+function toolNamesIn(dir: string): string[] {
   return (
     JSON.parse(
-      fs.readFileSync(fromRoot(`${SERVE_TOOL_DIR}/tool-schemas.json`), "utf8"),
+      fs.readFileSync(fromRoot(`${dir}/tool-schemas.json`), "utf8"),
     ) as { name: string }[]
   ).map((t) => t.name);
 }
@@ -61,6 +80,11 @@ export interface ServeToolStackProps extends cdk.StackProps {
  *   serve-agent only. Every call runs as one fixed COA identity from props;
  *   admission is the calling platform's job, serve-agent's grants authorize the
  *   identity per namespace.
+ * - Discovery tools (`list_metrics`, `describe_schema`): one function per tool
+ *   as well, each calling its metric-service / ontology-proxy Lambda directly.
+ *   Those backends do not authorize callers, so these functions run COA's grant
+ *   lookup and Cedar `viewNamespace` check for the same fixed identity first.
+ *   Schemas in `discovery-tool/tool-schemas.json`.
  * - `serve-tool-user` -> serve (JWT): one function for all tools, forwarding
  *   the human caller's ID token from {@link SERVE_TOOL_ID_TOKEN_HEADER}. Serve
  *   verifies it and takes groups from it, so this role needs no AgentCore IAM.
@@ -106,17 +130,26 @@ export class ServeToolStack extends SCLStack {
       functionSuffix: string,
       description: string,
       environment: Record<string, string>,
+      fnOpts: {
+        code: lambda.Code;
+        handler: string;
+        timeout: cdk.Duration;
+      } = {
+        code,
+        handler: "serve_tool_handler.handler",
+        // Serve's own resolve budget is 170s; leave headroom for the hop.
+        timeout: cdk.Duration.seconds(180),
+      },
     ): lambda.Alias => {
       const fn = new lambda.Function(this, `${idBase}Fn`, {
         functionName: this.prefixed(functionSuffix),
         runtime: lambda.Runtime.PYTHON_3_12,
         architecture: lambda.Architecture.ARM_64,
-        handler: "serve_tool_handler.handler",
-        code,
-        // Serve's own resolve budget is 170s; leave headroom for the hop.
-        timeout: cdk.Duration.seconds(180),
+        handler: fnOpts.handler,
+        code: fnOpts.code,
+        timeout: fnOpts.timeout,
         memorySize: 256,
-        environment: { SERVE_INVOKE_TIMEOUT_S: "170", ...environment },
+        environment,
         description,
       });
       // currentVersion re-publishes when code or config changes, so PROD
@@ -142,6 +175,7 @@ export class ServeToolStack extends SCLStack {
         `COA agent tool '${tool}' -> serve-agent (IAM)`,
         {
           SERVE_TOOL_MODE: "agent",
+          SERVE_INVOKE_TIMEOUT_S: "170",
           SERVE_TOOL_NAME: tool,
           SERVE_RUNTIME_ARN: serveAgentRuntimeArn,
           COA_AGENT_USER_ID: agentUserId,
@@ -162,12 +196,99 @@ export class ServeToolStack extends SCLStack {
       });
     }
 
+    // ── Discovery tools (list_metrics, describe_schema) ───────────────
+    // These call the metric-service / ontology-proxy Lambda directly (as the
+    // MCP server does), and those backends do not authorize the caller, so the
+    // handler runs COA's grant lookup + Cedar viewNamespace check itself. It
+    // needs coa_serve.role_resolver and coa_authorization (+ cedarpy).
+    const discoveryCode = bundlePython({
+      srcDirs: [
+        fromRoot(DISCOVERY_TOOL_DIR),
+        fromRoot("packages/context-manager/src"),
+        fromRoot("libs/common/src"),
+      ],
+      // Same set as the other Lambdas that bundle libs/common. Bare names so
+      // the local bundling shell does not read `>=` as a redirect.
+      pipDeps: [
+        "cedarpy",
+        "cryptography",
+        "opensearch-py",
+        "pydantic",
+        "pydantic-settings",
+        "PyJWT",
+        "requests",
+        "requests-aws4auth",
+        "structlog",
+      ],
+      architecture: "arm64",
+    });
+    const rolesTableName = this.prefixed(TABLE_NAMES.ROLES);
+    const rrmTableName = this.prefixed(TABLE_NAMES.RESOURCE_ROLE_MAPPINGS);
+    const tableArn = (name: string) =>
+      this.formatArn({
+        service: "dynamodb",
+        resource: "table",
+        resourceName: name,
+      });
+
+    for (const tool of discoveryToolNames()) {
+      const backend = DISCOVERY_BACKENDS[tool];
+      if (!backend) {
+        throw new Error(
+          `ServeToolStack: no backend for discovery tool '${tool}'`,
+        );
+      }
+      const backendArn = prefixedLambdaArn(this, backend);
+      const idBase = `Tool${pascal(tool)}`;
+      const alias = makeFn(
+        idBase,
+        `serve-tool-${tool.replace(/_/g, "-")}`,
+        `COA agent tool '${tool}' -> ${backend} (grant + Cedar checked here)`,
+        {
+          DISCOVERY_TOOL_NAME: tool,
+          BACKEND_LAMBDA_ARN: backendArn,
+          COA_AGENT_USER_ID: agentUserId,
+          COA_AGENT_GROUPS: agentGroups.join(","),
+          ROLES_TABLE_NAME: rolesTableName,
+          RRM_TABLE_NAME: rrmTableName,
+        },
+        {
+          code: discoveryCode,
+          handler: "discovery_tool_handler.handler",
+          timeout: cdk.Duration.seconds(45),
+        },
+      );
+      // Its own backend only, and read-only on the two grant tables.
+      alias.lambda.addToRolePolicy(
+        new iam.PolicyStatement({
+          actions: ["lambda:InvokeFunction"],
+          resources: [backendArn],
+        }),
+      );
+      alias.lambda.addToRolePolicy(
+        new iam.PolicyStatement({
+          actions: ["dynamodb:GetItem", "dynamodb:Query"],
+          resources: [
+            tableArn(rolesTableName),
+            tableArn(rrmTableName),
+            `${tableArn(rrmTableName)}/index/*`,
+          ],
+        }),
+      );
+      this.toolAliases[tool] = alias;
+      new cdk.CfnOutput(this, `ToolAliasArn${pascal(tool)}`, {
+        value: alias.functionArn,
+        description: `Agent tool '${tool}' :PROD alias (${backend})`,
+      });
+    }
+
     this.userAlias = makeFn(
       "User",
       "serve-tool-user",
       "COA serve gateway tool (user) -> serve (JWT)",
       {
         SERVE_TOOL_MODE: "user",
+        SERVE_INVOKE_TIMEOUT_S: "170",
         SERVE_RUNTIME_ARN: serveRuntimeArn,
         ID_TOKEN_HEADER: SERVE_TOOL_ID_TOKEN_HEADER,
       },

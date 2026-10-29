@@ -7,6 +7,7 @@ import { Template, Match } from "aws-cdk-lib/assertions";
 import {
   ServeToolStack,
   serveToolNames,
+  discoveryToolNames,
 } from "../../lib/stacks/services/serve-tool-stack";
 import { DEFAULT_RESOURCE_PREFIX, DEFAULT_ENV } from "../../lib/constants";
 
@@ -22,6 +23,8 @@ const TEST_CONTEXT = {
 };
 
 const TOOLS = ["query", "translate_sparql", "rag_retrieval", "graph_traversal"];
+const DISCOVERY = ["list_metrics", "describe_schema"];
+const ALL_TOOLS = [...TOOLS, ...DISCOVERY];
 const GATEWAY_ROLE = "arn:aws:iam::111122223333:role/workstream-gateway-role";
 
 function build(props: ConstructorParameters<typeof ServeToolStack>[2] = {}) {
@@ -82,16 +85,16 @@ describe("ServeToolStack", () => {
     );
   });
 
-  it("publishes 5 PROD aliases with unique ARNs, one per agent tool", () => {
+  it("publishes 7 PROD aliases with unique ARNs, one per agent tool", () => {
     template.resourcePropertiesCountIs(
       "AWS::Lambda::Alias",
       { Name: "PROD" },
-      5,
+      7,
     );
-    const arns = TOOLS.map((t) =>
+    const arns = ALL_TOOLS.map((t) =>
       stack.resolve(stack.toolAliases[t].functionArn),
     );
-    expect(new Set(arns.map((a) => JSON.stringify(a))).size).toBe(4);
+    expect(new Set(arns.map((a) => JSON.stringify(a))).size).toBe(6);
   });
 
   it("scopes every agent role to InvokeAgentRuntime on serve-agent only", () => {
@@ -146,13 +149,92 @@ describe("ServeToolStack", () => {
       "ToolAliasArnTranslateSparql",
       "ToolAliasArnRagRetrieval",
       "ToolAliasArnGraphTraversal",
+      "ToolAliasArnListMetrics",
+      "ToolAliasArnDescribeSchema",
       "ToolAliasArns",
       "UserAliasArn",
     ]) {
       expect(outputs[id]).toBeDefined();
     }
     const map = JSON.stringify(outputs.ToolAliasArns.Value);
-    for (const t of TOOLS) expect(map).toContain(t);
+    for (const t of ALL_TOOLS) expect(map).toContain(t);
+  });
+
+  describe("discovery tools", () => {
+    const discoveryFns = Object.values(functions).filter(
+      (f) => f.Properties.Environment.Variables.DISCOVERY_TOOL_NAME,
+    );
+    const policies = Object.values(
+      template.findResources("AWS::IAM::Policy") as Record<string, Res>,
+    );
+
+    it("creates one function per discovery tool with the fixed identity", () => {
+      expect(discoveryToolNames()).toEqual(DISCOVERY);
+      expect(discoveryFns).toHaveLength(2);
+      for (const f of discoveryFns) {
+        expect(f.Properties.Handler).toBe("discovery_tool_handler.handler");
+        expect(f.Properties.Environment.Variables).toMatchObject({
+          COA_AGENT_USER_ID: "factory-agent",
+          COA_AGENT_GROUPS: "factory-agents",
+          ROLES_TABLE_NAME: "coa-dev-roles",
+          RRM_TABLE_NAME: "coa-dev-resource-role-mappings",
+        });
+        expect(f.Properties.Environment.Variables.SERVE_TOOL_MODE).toBe(
+          undefined,
+        );
+      }
+    });
+
+    it("points each tool at its own backend Lambda", () => {
+      const backends = Object.fromEntries(
+        discoveryFns.map((f) => [
+          f.Properties.Environment.Variables.DISCOVERY_TOOL_NAME,
+          JSON.stringify(f.Properties.Environment.Variables.BACKEND_LAMBDA_ARN),
+        ]),
+      );
+      expect(backends.list_metrics).toContain("coa-dev-metric-api");
+      expect(backends.describe_schema).toContain("coa-dev-ontology-api-proxy");
+    });
+
+    it("lets each role invoke only its own backend and read the grant tables", () => {
+      const invokeStmts = policies.flatMap((p) =>
+        (
+          p.Properties.PolicyDocument.Statement as {
+            Action: unknown;
+            Resource: unknown;
+          }[]
+        ).filter((s) =>
+          ([] as unknown[]).concat(s.Action).includes("lambda:InvokeFunction"),
+        ),
+      );
+      expect(invokeStmts).toHaveLength(2);
+      for (const s of invokeStmts) {
+        expect(([] as unknown[]).concat(s.Resource)).toHaveLength(1);
+      }
+      const ddb = JSON.stringify(
+        policies.flatMap((p) =>
+          (
+            p.Properties.PolicyDocument.Statement as { Action: unknown }[]
+          ).filter((s) => JSON.stringify(s.Action).includes("dynamodb:")),
+        ),
+      );
+      expect(ddb).toContain("coa-dev-roles");
+      expect(ddb).toContain("coa-dev-resource-role-mappings");
+      expect(ddb).not.toMatch(/PutItem|UpdateItem|DeleteItem|Scan/);
+    });
+
+    it("gives discovery roles no AgentCore access", () => {
+      const discoveryPolicies = policies.filter((p) =>
+        JSON.stringify(p.Properties.PolicyDocument).includes(
+          "lambda:InvokeFunction",
+        ),
+      );
+      for (const p of discoveryPolicies) {
+        expect(JSON.stringify(p.Properties.PolicyDocument)).not.toContain(
+          "bedrock-agentcore",
+        );
+      }
+    });
   });
 
   it("adds no invoke permissions by default", () => {
@@ -164,7 +246,7 @@ describe("ServeToolStack", () => {
     t.resourcePropertiesCountIs(
       "AWS::Lambda::Permission",
       { Action: "lambda:InvokeFunction", Principal: GATEWAY_ROLE },
-      5,
+      7,
     );
   });
 

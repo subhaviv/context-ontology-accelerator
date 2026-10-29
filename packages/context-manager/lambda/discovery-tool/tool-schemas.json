@@ -1,0 +1,29 @@
+[
+  {
+    "name": "list_metrics",
+    "description": "List the governed metric definitions in a COA namespace (name, description, dimensions, synonyms). Call this first to discover which metrics exist before querying. Read-only. Returns {metrics, nextToken?}.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "namespaceId": { "type": "string", "description": "The COA namespace to list metrics for." },
+        "maxResults": { "type": "integer", "description": "Maximum metrics to return (default 100, max 1000)." },
+        "nextToken": { "type": "string", "description": "Continuation token from a previous response." }
+      },
+      "required": ["namespaceId"]
+    }
+  },
+  {
+    "name": "describe_schema",
+    "description": "Describe a COA namespace's ontology: classes, their properties, and the data-source tables behind them. Use it to learn what data exists and how entities relate before querying. Read-only. Returns {classes, ontologyVersion}.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "namespaceId": { "type": "string", "description": "The COA namespace to describe." },
+        "maxResults": { "type": "integer", "description": "Maximum classes to return (default 100, max 500)." },
+        "includeProperties": { "type": "boolean", "description": "Include each class's properties (default true)." },
+        "classFilter": { "type": "string", "description": "Restrict to one class IRI or IRI prefix." }
+      },
+      "required": ["namespaceId"]
+    }
+  }
+]
