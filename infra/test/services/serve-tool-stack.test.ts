@@ -45,7 +45,7 @@ describe("ServeToolStack", () => {
     Res
   >;
   const agentFns = Object.entries(functions).filter(
-    ([, f]) => f.Properties.Environment.Variables.SERVE_TOOL_MODE === "agent",
+    ([, f]) => f.Properties.Environment.Variables.SERVE_TOOL_NAME,
   );
 
   it("reads the 4 tools from tool-schemas.json", () => {
@@ -73,23 +73,24 @@ describe("ServeToolStack", () => {
     }
   });
 
-  it("keeps one user function", () => {
-    template.resourcePropertiesCountIs(
-      "AWS::Lambda::Function",
-      {
-        Environment: {
-          Variables: Match.objectLike({ SERVE_TOOL_MODE: "user" }),
-        },
-      },
-      1,
-    );
+  it("has only the 6 M2M tool functions (no user/JWT function)", () => {
+    expect(Object.keys(functions)).toHaveLength(6);
+    const json = JSON.stringify(template.toJSON());
+    for (const gone of [
+      "serve-tool-user",
+      "ID_TOKEN_HEADER",
+      "SERVE_TOOL_MODE",
+      "user-alias-arn",
+    ]) {
+      expect(json).not.toContain(gone);
+    }
   });
 
-  it("publishes 7 PROD aliases with unique ARNs, one per agent tool", () => {
+  it("publishes 6 PROD aliases with unique ARNs, one per agent tool", () => {
     template.resourcePropertiesCountIs(
       "AWS::Lambda::Alias",
       { Name: "PROD" },
-      7,
+      6,
     );
     const arns = ALL_TOOLS.map((t) =>
       stack.resolve(stack.toolAliases[t].functionArn),
@@ -152,7 +153,6 @@ describe("ServeToolStack", () => {
       "ToolAliasArnListMetrics",
       "ToolAliasArnDescribeSchema",
       "ToolAliasArns",
-      "UserAliasArn",
     ]) {
       expect(outputs[id]).toBeDefined();
     }
@@ -179,7 +179,7 @@ describe("ServeToolStack", () => {
           ROLES_TABLE_NAME: "coa-dev-roles",
           RRM_TABLE_NAME: "coa-dev-resource-role-mappings",
         });
-        expect(f.Properties.Environment.Variables.SERVE_TOOL_MODE).toBe(
+        expect(f.Properties.Environment.Variables.SERVE_TOOL_NAME).toBe(
           undefined,
         );
       }
@@ -246,7 +246,7 @@ describe("ServeToolStack", () => {
     t.resourcePropertiesCountIs(
       "AWS::Lambda::Permission",
       { Action: "lambda:InvokeFunction", Principal: GATEWAY_ROLE },
-      7,
+      6,
     );
   });
 

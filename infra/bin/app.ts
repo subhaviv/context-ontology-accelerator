@@ -596,8 +596,9 @@ async function deploy(): Promise<void> {
     agentMcp.addDependency(auth); // needs /issuer SSM param (Loom issuer)
   }
 
-  // serve-tool: Lambda tools (:PROD aliases) in front of serve-agent (IAM, one
-  // function per tool, one fixed COA identity) and serve (JWT passthrough).
+  // serve-tool: M2M Lambda tools (:PROD aliases, one function per tool, one
+  // fixed COA identity) for factory gateways: four in front of serve-agent
+  // (IAM) and the two discovery tools.
   // serve_tool_invoker_arns is optional: factory gateways get their invoke
   // grant from the factory registry stack, so it is normally left unset.
   const parseJsonContext = <T>(key: string): T | undefined => {
@@ -611,7 +612,6 @@ async function deploy(): Promise<void> {
     ),
   });
   serveTool.addDependency(serveAgent); // /serve/agent-runtime-arn
-  serveTool.addDependency(serve); // /serve/runtime-arn
 
   // Every stack with a VPC Lambda waits for EniWarmStack, so its functions reuse
   // the pre-warmed Hyperplane ENIs instead of each paying a ~4 min create.

@@ -24,10 +24,6 @@ const DISCOVERY_BACKENDS: Record<string, string> = {
   describe_schema: ONTOLOGY_API_PROXY_FUNCTION_NAME,
 };
 
-/** Header the gateway propagates the human caller's ID token in. */
-export const SERVE_TOOL_ID_TOKEN_HEADER =
-  "X-Amzn-Bedrock-AgentCore-Runtime-Custom-IdToken";
-
 /** Default COA identity every agent-tool call runs as. */
 export const DEFAULT_AGENT_USER_ID = "factory-agent";
 export const DEFAULT_AGENT_GROUPS = ["factory-agents"];
@@ -71,7 +67,7 @@ export interface ServeToolStackProps extends cdk.StackProps {
 }
 
 /**
- * Lambda tools in front of the two Context Manager (serve) runtimes.
+ * M2M Lambda tools for COA, for AI Agent Factory gateway Lambda targets.
  *
  * - Agent tools: ONE function per tool in `tool-schemas.json`
  *   (`serve-tool-<tool>`), each with its own `PROD` alias so every tool has a
@@ -85,17 +81,13 @@ export interface ServeToolStackProps extends cdk.StackProps {
  *   Those backends do not authorize callers, so these functions run COA's grant
  *   lookup and Cedar `viewNamespace` check for the same fixed identity first.
  *   Schemas in `discovery-tool/tool-schemas.json`.
- * - `serve-tool-user` -> serve (JWT): one function for all tools, forwarding
- *   the human caller's ID token from {@link SERVE_TOOL_ID_TOKEN_HEADER}. Serve
- *   verifies it and takes groups from it, so this role needs no AgentCore IAM.
  *
- * Everything lives in the same account as serve, so the Lambda -> serve hop
- * never crosses an account.
+ * Everything lives in the same account as serve and the discovery backends, so
+ * no hop crosses an account.
  */
 export class ServeToolStack extends SCLStack {
   /** Agent-tool `PROD` aliases, keyed by tool name. */
   public readonly toolAliases: Record<string, lambda.Alias> = {};
-  public readonly userAlias: lambda.Alias;
 
   constructor(scope: Construct, id: string, props: ServeToolStackProps = {}) {
     super(scope, id, props);
@@ -113,10 +105,6 @@ export class ServeToolStack extends SCLStack {
     const serveAgentRuntimeArn = ssm.StringParameter.valueForStringParameter(
       this,
       `${ssmPrefix}/serve/agent-runtime-arn`,
-    );
-    const serveRuntimeArn = ssm.StringParameter.valueForStringParameter(
-      this,
-      `${ssmPrefix}/serve/runtime-arn`,
     );
 
     // No pip deps: the handler uses only stdlib + botocore from the runtime.
@@ -174,7 +162,6 @@ export class ServeToolStack extends SCLStack {
         `serve-tool-${tool.replace(/_/g, "-")}`,
         `COA agent tool '${tool}' -> serve-agent (IAM)`,
         {
-          SERVE_TOOL_MODE: "agent",
           SERVE_INVOKE_TIMEOUT_S: "170",
           SERVE_TOOL_NAME: tool,
           SERVE_RUNTIME_ARN: serveAgentRuntimeArn,
@@ -282,18 +269,6 @@ export class ServeToolStack extends SCLStack {
       });
     }
 
-    this.userAlias = makeFn(
-      "User",
-      "serve-tool-user",
-      "COA serve gateway tool (user) -> serve (JWT)",
-      {
-        SERVE_TOOL_MODE: "user",
-        SERVE_INVOKE_TIMEOUT_S: "170",
-        SERVE_RUNTIME_ARN: serveRuntimeArn,
-        ID_TOKEN_HEADER: SERVE_TOOL_ID_TOKEN_HEADER,
-      },
-    );
-
     // tool -> alias ARN, for the factory catalogue to copy.
     const toolAliasMap = cdk.Stack.of(this).toJsonString(
       Object.fromEntries(
@@ -306,19 +281,9 @@ export class ServeToolStack extends SCLStack {
       description:
         "Agent tool -> :PROD alias ARN (JSON), for gateway Lambda targets",
     });
-    new ssm.StringParameter(this, "UserAliasArnParam", {
-      parameterName: `${ssmPrefix}/serve-tool/user-alias-arn`,
-      stringValue: this.userAlias.functionArn,
-      description: "serve-tool-user :PROD alias ARN (gateway Lambda target)",
-    });
-
     new cdk.CfnOutput(this, "ToolAliasArns", {
       value: toolAliasMap,
-      description: `Agent tool -> :PROD alias ARN; schemas in ${SERVE_TOOL_DIR}/tool-schemas.json`,
-    });
-    new cdk.CfnOutput(this, "UserAliasArn", {
-      value: this.userAlias.functionArn,
-      description: "User tool :PROD alias (serve, JWT passthrough)",
+      description: `Agent tool -> :PROD alias ARN; schemas in ${SERVE_TOOL_DIR}/tool-schemas.json and ${DISCOVERY_TOOL_DIR}/tool-schemas.json`,
     });
   }
 }

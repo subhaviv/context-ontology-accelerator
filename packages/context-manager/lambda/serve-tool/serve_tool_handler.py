@@ -3,21 +3,13 @@
 
 """AgentCore Gateway Lambda target in front of a Context Manager (serve) runtime.
 
-One handler, deployed by ``ServeToolStack`` as:
-
-* ``SERVE_TOOL_MODE=agent``: one function PER TOOL (``SERVE_TOOL_NAME``), each
-  fronting the IAM-authorized serve-agent runtime and SigV4-signing with its own
-  role. Every call runs as ONE fixed COA identity from this function's env
-  (``COA_AGENT_USER_ID`` / ``COA_AGENT_GROUPS``), never from tool arguments or
-  the gateway context. Admission (which agents may call the tool at all) is the
-  calling platform's job; serve-agent then authorizes that identity against the
-  namespace with its own grants.
-* ``SERVE_TOOL_MODE=user``: one function for all tools, fronting the
-  JWT-authorized human serve runtime. The caller's ID token arrives as a
-  gateway-propagated header and is forwarded as ``Authorization: Bearer``.
-  Serve's own authorizer and ``identity.py`` validate it and take groups from the
-  token, so this function makes no identity decision. The tool is read from
-  ``bedrockAgentCoreToolName`` (``<target>___<tool>``).
+Deployed by ``ServeToolStack`` as one function PER TOOL (``SERVE_TOOL_NAME``),
+each fronting the IAM-authorized serve-agent runtime and SigV4-signing with its
+own role. Every call runs as ONE fixed COA identity from this function's env
+(``COA_AGENT_USER_ID`` / ``COA_AGENT_GROUPS``), never from tool arguments or the
+gateway context. Admission (which agents may call the tool at all) is the calling
+platform's job; serve-agent then authorizes that identity against the namespace
+with its own grants.
 
 The event holds only the tool's arguments. Payload keys mirror
 ``coa_mcp.tools.execution`` so serve sees the same contract from every caller.
@@ -28,7 +20,6 @@ needs no pip install.
 
 from __future__ import annotations
 
-import base64
 import hashlib
 import json
 import logging
@@ -42,7 +33,6 @@ logger = logging.getLogger()
 logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
 
 _SESSION_HEADER = "X-Amzn-Bedrock-AgentCore-Runtime-Session-Id"
-_TOOL_DELIMITER = "___"
 
 
 class ToolError(Exception):
@@ -150,33 +140,15 @@ _BUILDERS = {
 }
 
 
-# ── Gateway context ────────────────────────────────────────────────────────────
+# ── Tool + identity ────────────────────────────────────────────────────────────
 
 
-def _custom_context(context: Any) -> dict:
-    client_context = getattr(context, "client_context", None)
-    custom = getattr(client_context, "custom", None) if client_context else None
-    return custom if isinstance(custom, dict) else {}
-
-
-def _user_tool_name(custom: dict) -> str:
-    """User mode: one function serves every tool, so read it from the gateway."""
-    raw = str(custom.get("bedrockAgentCoreToolName") or "")
-    name = raw.split(_TOOL_DELIMITER)[-1] if raw else ""
-    if name not in _BUILDERS:
-        raise ToolError(400, f"unknown tool '{raw}'")
-    return name
-
-
-def _agent_tool_name() -> str:
-    """Agent mode: one function per tool, pinned by ``SERVE_TOOL_NAME``."""
+def _tool_name() -> str:
+    """One function per tool, pinned by ``SERVE_TOOL_NAME``."""
     name = os.environ.get("SERVE_TOOL_NAME", "")
     if name not in _BUILDERS:
         raise ToolError(500, f"SERVE_TOOL_NAME misconfigured: '{name}'")
     return name
-
-
-# ── Identity ───────────────────────────────────────────────────────────────────
 
 
 def _agent_profile(namespace: str) -> dict:
@@ -186,37 +158,6 @@ def _agent_profile(namespace: str) -> dict:
     if not user_id or not groups:
         raise ToolError(500, "agent identity misconfigured (COA_AGENT_USER_ID / COA_AGENT_GROUPS)")
     return {"userId": user_id, "groups": groups, "namespace": namespace}
-
-
-def _propagated_token(custom: dict) -> str:
-    header = os.environ.get("ID_TOKEN_HEADER", "X-Amzn-Bedrock-AgentCore-Runtime-Custom-IdToken").lower()
-    headers = custom.get("bedrockAgentCorePropagatedHeaders") or {}
-    token = ""
-    if isinstance(headers, dict):
-        for key, value in headers.items():
-            if str(key).lower() == header:
-                token = str(value or "")
-                break
-    if token.lower().startswith("bearer "):
-        token = token[7:]
-    token = token.strip()
-    if not token:
-        raise ToolError(401, "missing caller ID token header")
-    return token
-
-
-def _token_subject(token: str) -> str:
-    """Read ``sub`` WITHOUT verifying, only to scope the runtime session id.
-
-    Serve's JWT authorizer verifies the token; an invalid token never reaches a
-    session, so this value is never trusted for authorization.
-    """
-    try:
-        payload = token.split(".")[1]
-        payload += "=" * (-len(payload) % 4)
-        return str(json.loads(base64.urlsafe_b64decode(payload)).get("sub") or "")
-    except (IndexError, ValueError):
-        return ""
 
 
 # ── Invoke ─────────────────────────────────────────────────────────────────────
@@ -256,15 +197,12 @@ def _first_event(raw: str) -> dict:
     raise ToolError(502, "serve returned an empty response")
 
 
-def _invoke(payload: dict, *, bearer: str | None, session_principal: str) -> dict:
+def _invoke(payload: dict, *, session_principal: str) -> dict:
     region = os.environ.get("AWS_REGION", "us-east-1")
     url = _invocation_url(os.environ["SERVE_RUNTIME_ARN"], region)
     body = json.dumps(payload).encode()
     session = {_SESSION_HEADER: _session_id(session_principal, payload["namespace"])}
-    if bearer:
-        headers = {"Content-Type": "application/json", "Authorization": f"Bearer {bearer}", **session}
-    else:
-        headers = _sigv4_headers(url, body, region, session)
+    headers = _sigv4_headers(url, body, region, session)
     request = urllib.request.Request(url, data=body, headers=headers, method="POST")
     timeout = int(os.environ.get("SERVE_INVOKE_TIMEOUT_S", "170"))
     try:
@@ -287,27 +225,16 @@ def _invoke(payload: dict, *, bearer: str | None, session_principal: str) -> dic
 
 def handler(event: dict, context: Any) -> dict:
     """Gateway Lambda target entry point: dispatch one serve tool call."""
-    mode = os.environ.get("SERVE_TOOL_MODE", "")
     try:
-        if mode not in ("agent", "user"):
-            raise ToolError(500, f"SERVE_TOOL_MODE misconfigured: '{mode}'")
+        tool = _tool_name()
         if not isinstance(event, dict):
             raise ToolError(400, "tool arguments must be an object")
-        custom = _custom_context(context)
-        tool = _agent_tool_name() if mode == "agent" else _user_tool_name(custom)
         namespace = str(_require(event, "namespaceId"))
-        if mode == "agent":
-            profile = _agent_profile(namespace)
-            bearer, principal = None, profile["userId"]
-        else:
-            bearer = _propagated_token(custom)
-            # userId/groups left empty: serve takes both from the verified JWT.
-            profile = {"userId": "", "groups": [], "namespace": namespace}
-            principal = _token_subject(bearer)
+        profile = _agent_profile(namespace)
         payload = _BUILDERS[tool](event, profile)
-        result = _invoke(payload, bearer=bearer, session_principal=principal)
-        logger.info("tool=%s mode=%s namespace=%s ok", tool, mode, namespace)
+        result = _invoke(payload, session_principal=profile["userId"])
+        logger.info("tool=%s namespace=%s ok", tool, namespace)
         return result
     except ToolError as exc:
-        logger.info("tool error mode=%s status=%s", mode, exc.status)
+        logger.info("tool error status=%s", exc.status)
         return {"error": {"status": exc.status, "message": exc.message}}

@@ -5,8 +5,6 @@
 
 from __future__ import annotations
 
-import base64
-import json
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -18,8 +16,6 @@ sys.path.insert(0, str(Path(__file__).parents[2] / "lambda" / "serve-tool"))
 
 import serve_tool_handler as h  # noqa: E402
 
-ID_HEADER = "X-Amzn-Bedrock-AgentCore-Runtime-Custom-IdToken"
-
 
 def _ctx(tool: str = "coa-query___query", gateway: str = "gw-beacon", headers: dict | None = None):
     custom: dict[str, object] = {"bedrockAgentCoreToolName": tool, "bedrockAgentCoreGatewayId": gateway}
@@ -28,16 +24,10 @@ def _ctx(tool: str = "coa-query___query", gateway: str = "gw-beacon", headers: d
     return SimpleNamespace(client_context=SimpleNamespace(custom=custom))
 
 
-def _jwt(sub: str) -> str:
-    body = base64.urlsafe_b64encode(json.dumps({"sub": sub}).encode()).decode().rstrip("=")
-    return f"eyJhbGciOiJub25lIn0.{body}.sig"
-
-
 @pytest.fixture(autouse=True)
 def _env(monkeypatch):
     monkeypatch.setenv("AWS_REGION", "us-east-1")
     monkeypatch.setenv("SERVE_RUNTIME_ARN", "arn:aws:bedrock-agentcore:us-east-1:123456789012:runtime/serve-x")
-    monkeypatch.setenv("ID_TOKEN_HEADER", ID_HEADER)
 
 
 @pytest.fixture
@@ -49,7 +39,6 @@ def invoke():
 @pytest.fixture
 def agent_env(monkeypatch):
     """Agent-mode function env: fixed identity; the test sets SERVE_TOOL_NAME."""
-    monkeypatch.setenv("SERVE_TOOL_MODE", "agent")
     monkeypatch.setenv("COA_AGENT_USER_ID", "factory-agent")
     monkeypatch.setenv("COA_AGENT_GROUPS", "factory-agents")
 
@@ -71,7 +60,6 @@ class TestAgentMode:
         assert out == {"result": {"rows": []}, "requestId": "r1"}
         payload = invoke.call_args.args[0]
         assert payload["profile"] == FIXED_PROFILE
-        assert invoke.call_args.kwargs["bearer"] is None
         assert invoke.call_args.kwargs["session_principal"] == "factory-agent"
 
     def test_works_without_any_gateway_context(self, agent_env, invoke):
@@ -100,40 +88,10 @@ class TestAgentMode:
         h.handler({"query": "q", "namespaceId": "ns1"}, None)
         assert invoke.call_args.args[0]["profile"]["groups"] == ["a", "b"]
 
-    def test_no_gateway_map_code_remains(self):
+    def test_no_gateway_map_or_user_path_remains(self):
         src = Path(h.__file__).read_text()
-        assert "gateway_map" not in src and "GATEWAY_IDENTITY" not in src
-
-
-@pytest.mark.unit
-class TestUserMode:
-    @pytest.fixture(autouse=True)
-    def _mode(self, monkeypatch):
-        monkeypatch.setenv("SERVE_TOOL_MODE", "user")
-
-    def test_forwards_propagated_token_and_asserts_no_groups(self, invoke):
-        token = _jwt("user-1")
-        out = h.handler({"query": "q", "namespaceId": "ns1"}, _ctx(headers={ID_HEADER.lower(): f"Bearer {token}"}))
-        assert "error" not in out
-        assert invoke.call_args.kwargs["bearer"] == token
-        assert invoke.call_args.kwargs["session_principal"] == "user-1"
-        assert invoke.call_args.args[0]["profile"] == {"userId": "", "groups": [], "namespace": "ns1"}
-
-    def test_missing_token_is_401(self, invoke):
-        assert h.handler({"query": "q", "namespaceId": "ns1"}, _ctx(headers={}))["error"]["status"] == 401
-        invoke.assert_not_called()
-
-    def test_tool_comes_from_gateway_tool_name(self, invoke):
-        token = _jwt("u")
-        h.handler(
-            {"query": "q", "namespaceId": "ns1"},
-            _ctx(tool="coa-rag___rag_retrieval", headers={ID_HEADER: token}),
-        )
-        assert invoke.call_args.args[0]["action"] == "kbSearch"
-
-    def test_unknown_tool(self, invoke):
-        out = h.handler({"namespaceId": "ns1"}, _ctx(tool="t___describe_schema", headers={ID_HEADER: _jwt("u")}))
-        assert out["error"]["status"] == 400
+        for gone in ("gateway_map", "GATEWAY_IDENTITY", "SERVE_TOOL_MODE", "ID_TOKEN_HEADER", "Bearer"):
+            assert gone not in src, gone
 
 
 @pytest.mark.unit
@@ -189,10 +147,6 @@ class TestToolDispatch:
     def test_missing_namespace(self, agent_env, invoke):
         assert h.handler({"query": "q"}, None)["error"]["status"] == 400
 
-    def test_bad_mode(self, monkeypatch, invoke):
-        monkeypatch.setenv("SERVE_TOOL_MODE", "")
-        assert h.handler({"query": "q", "namespaceId": "ns1"}, _ctx())["error"]["status"] == 500
-
 
 @pytest.mark.unit
 class TestInvoke:
@@ -202,8 +156,7 @@ class TestInvoke:
     def test_plain_json(self):
         assert h._first_event('{"a": 1}') == {"a": 1}
 
-    def test_serve_status_error_raises(self, monkeypatch):
-        monkeypatch.setenv("SERVE_TOOL_MODE", "user")
+    def test_serve_status_error_raises(self):
 
         class _Resp:
             def __enter__(self):
@@ -217,12 +170,14 @@ class TestInvoke:
 
         with (
             patch.object(h.urllib.request, "urlopen", return_value=_Resp()) as urlopen,
+            patch.object(h, "_sigv4_headers", return_value={"Authorization": "AWS4-HMAC-SHA256 sig"}) as sign,
             pytest.raises(h.ToolError) as exc,
         ):
-            h._invoke({"namespace": "ns1"}, bearer="tok", session_principal="u")
+            h._invoke({"namespace": "ns1"}, session_principal="u")
         assert exc.value.status == 403
         req = urlopen.call_args.args[0]
-        assert req.headers["Authorization"] == "Bearer tok"
+        assert req.headers["Authorization"] == "AWS4-HMAC-SHA256 sig"
+        assert h._SESSION_HEADER in sign.call_args.args[3]
         assert req.full_url.endswith("/invocations?qualifier=DEFAULT")
 
     def test_session_id_is_long_enough_and_scoped(self):
